@@ -1,0 +1,31 @@
+# Local measurements, forecasts, reports and generated publication assets
+/功率预测数据/
+/*.csv
+/*.pdf
+/reports/
+/%SystemDrive%/
+/PROGRESS.md
+/diagnose-site.mjs
+/dashboard-publish-copy/
+/publication-*/
+
+# Keep nested publication history local; track dashboard source explicitly.
+/dashboard/.git/
+/dashboard/.openai/
+/dashboard/src/data.json
+/dashboard/dist/
+/dashboard/.data-app-assets/
+/dashboard/.data-app-offline/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+.DS_Store
+Thumbs.db

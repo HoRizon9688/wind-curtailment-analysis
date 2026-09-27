@@ -1,0 +1,2 @@
+﻿total_gap_mwh,prediction_mwh,dispatch_mwh,other_mwh,other_above_agc_mwh,other_below_agc_mwh,other_control_mwh,other_deadband_mwh,raw_dispatch_mwh,period,window_hours,supplied_hours,valid_hours,coverage_ratio,gap_hours
+52.5,20.0,22.5,10.0,5.0,5.0,0.0,0.0,22.5,2026-09-01,2.0,2.0,2.0,1.0,0.0

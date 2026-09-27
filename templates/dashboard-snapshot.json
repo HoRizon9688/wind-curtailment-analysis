@@ -1,0 +1,67 @@
+{
+  "surface": "dashboard",
+  "title": "风电限电量分析",
+  "status": "draft",
+  "buildStatus": "complete",
+  "generatedAt": null,
+  "filters": [],
+  "queries": {
+    "wind_minutes": {
+      "rows": [],
+      "source": {
+        "type": "file",
+        "name": "莱西风电场 · 2026年8月1日",
+        "files": [
+          "可用-理论-实发-AGC指令.csv",
+          "功率预测-山东青岛莱西风电场-数据下载-8.1.xls",
+          "NSRL1_20260801_*_CDQ.RB_1"
+        ],
+        "period": "2026-08-01 00:00—24:00 (UTC+08:00)",
+        "description": "56 MW / 110 kV。AGC装置测点，实发为集电线有功之和。1440条分钟记录；1425分钟匹配到第二点预测。",
+        "caveats": [
+          "前15分钟缺少前一日23:45版本，1.431761667 MWh未分配。",
+          "按相邻文件第二点的目标时刻线性插值到每分钟，非15分钟保持；不外推、不跨缺失版本插值。",
+          "插值预测是离线分析基准，不代表调度实际逐分钟下发的指令；保留原始AGC。",
+          "每分钟先分类再乘1/60小时积分；原始分钟值为平均或瞬时抽样尚待确认。",
+          "未设置人为死区或响应滞后；AGC>插值预测时归待核实；实发高于可用不负向抵扣。"
+        ],
+        "metricDefinitions": [
+          {
+            "label": "调度限电",
+            "definition": "G≤F时，max(min(A,F)-max(G,P),0)/60 MWh；G>F时为0。",
+            "formula": "max(min(A,F)-max(G,P),0)/60"
+          },
+          {
+            "label": "预测限电",
+            "definition": "G≤F时，max(A-max(F,P),0)/60 MWh；G>F时为0。"
+          },
+          {
+            "label": "待核实差额",
+            "definition": "正常时为max(min(A,G)-P,0)/60；G>F时将正差额全部保留待核实。"
+          }
+        ],
+        "evidenceFlow": [
+          {
+            "title": "分钟输入",
+            "detail": "筛选2026-08-01，1440条，单位MW。保留可用、理论、实发、AGC原始值。"
+          },
+          {
+            "title": "预测匹配",
+            "detail": "96份CDQ与导出表16点一致；提取各文件第二点，以目标时刻为节点，对连续15分钟区间线性插值。"
+          },
+          {
+            "title": "逐分钟归因",
+            "detail": "使用curtailment.py计算。analyze_day.py独立Decimal算术复核，分类及总差额闭合。"
+          }
+        ]
+      },
+      "methods": [
+        {
+          "language": "text",
+          "code": "运行 refresh_linear_dashboard.py；F(t)=F0+(F1-F0)×(t-t0)/15分钟。分钟明细保留两端预测值、目标时间、版本和权重。按分钟矩形积分，阴影面积与分类电量一致。"
+        }
+      ]
+    }
+  },
+  "id": "dashboard:c2952011-3695-449c-a3d3-eb5197c02e4b"
+}
