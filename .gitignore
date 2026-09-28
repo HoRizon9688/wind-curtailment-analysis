@@ -5,6 +5,10 @@
 /reports/
 /%SystemDrive%/
 /PROGRESS.md
+/60MW光伏电站限电量.txt
+/.idea/
+/.venv/
+/venv/
 /diagnose-site.mjs
 /dashboard-publish-copy/
 /publication-*/
