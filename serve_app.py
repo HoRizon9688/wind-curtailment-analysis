@@ -46,7 +46,7 @@ def decode_uploads(items):
     return files
 
 
-def build_dashboard():
+def build_dashboard(project_dir=None, *, local_context=True):
     home = Path.home()
     node = os.environ.get('WIND_NODE') or shutil.which('node')
     if not node:
@@ -60,8 +60,13 @@ def build_dashboard():
             plugin = str(max(candidates,key=lambda p:p.stat().st_mtime))
     if not node or not plugin:
         raise RuntimeError('缺少 Node 或 Data 插件构建器。请查看 本机使用说明.md 配置 WIND_NODE / WIND_DATA_APP_SCRIPT。')
-    run = subprocess.run([node,plugin,'build','--project-dir',str(ROOT/'dashboard'),'--separate-data'],
-                         cwd=ROOT,capture_output=True,timeout=180,encoding='utf-8',errors='replace',
+    project_dir=Path(project_dir) if project_dir is not None else ROOT/'dashboard'
+    environment=dict(os.environ)
+    if not local_context:
+        environment.pop('CODEX_SESSION_ID',None)
+        environment.pop('CODEX_THREAD_ID',None)
+    run = subprocess.run([node,plugin,'build','--project-dir',str(project_dir),'--separate-data'],
+                         cwd=ROOT,env=environment,capture_output=True,timeout=180,encoding='utf-8',errors='replace',
                          creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
     if run.returncode:
         raise RuntimeError('图表构建失败：'+(run.stderr or run.stdout)[-1800:])

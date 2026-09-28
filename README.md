@@ -2,6 +2,23 @@
 
 本机网页支持上传一分钟功率表和“数据下载”超短期预测表，完成校验、插值、限电分解和图表展示。支持不同场站分批导入及连续多日期分析。结果为内部规则估算，不等同于调度责任或结算认定。
 
+## GitHub Pages 在线演示
+
+[打开静态演示](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。在线版使用独立生成的两天合成数据，不包含任何实际场站数据，可操作曲线、阴影、日期和明细导出。GitHub Pages不运行Python，所以在线版不提供文件上传计算；自己的数据请按下文在本机运行。
+
+发布来源设置：仓库 **Settings → Pages → Deploy from a branch → main → /docs**。`docs/.nojekyll`使GitHub直接发布生成文件，无需自定义Actions工作流。
+
+更新演示步骤：
+
+```powershell
+python build_pages_demo.py
+git add -- docs build_pages_demo.py dashboard/src/content/dashboard
+git commit -m "Update Pages demo"
+git push origin main
+```
+
+构建脚本在独立临时目录中使用公式生成合成数据，只复制经过哈希校验的网页和合成快照到`docs/`，不会读取真实数据或覆盖本机快照。需要本机已安装的Node/Data插件。修改前端源码后应先重新执行此脚本再推送；仅推送源码不会自动重新编译演示页面。
+
 ## 功能
 
 - 整期/逐日汇总、小时分布、分钟曲线、分类阴影、图表拖选、回放与导出。

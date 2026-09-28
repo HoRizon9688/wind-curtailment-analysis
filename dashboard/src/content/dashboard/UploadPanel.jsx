@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {DataComponent} from '../../data-app-public.jsx';
+import {DataComponent,useDataApp} from '../../data-app-public.jsx';
 import {csvText} from './wind-model.mjs';
 
 const fmt=(n,d=3)=>n==null?'—':n.toLocaleString('zh-CN',{maximumFractionDigits:d,minimumFractionDigits:d});
@@ -14,10 +14,12 @@ function filePayload(file){return new Promise((resolve,reject)=>{
 });}
 
 export function UploadPanel({hasResults}){
+ const {snapshot}=useDataApp(),demo=snapshot.pagesDemo===true;
  const [power,setPower]=useState([]),[forecast,setForecast]=useState([]),[station,setStation]=useState('');
  const [capacity,setCapacity]=useState('56'),[start,setStart]=useState(''),[end,setEnd]=useState('');
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[local,setLocal]=useState(null);
- useEffect(()=>{let current=true;fetch('/api/health').then(r=>r.json()).then(r=>{if(current)setLocal(r.local===true);}).catch(()=>{if(current)setLocal(false);});return()=>{current=false;};},[]);
+ useEffect(()=>{if(demo)return;let current=true;fetch('/api/health').then(r=>r.json()).then(r=>{if(current)setLocal(r.local===true);}).catch(()=>{if(current)setLocal(false);});return()=>{current=false;};},[demo]);
+ if(demo)return <section className="wind-upload"><h2>在线交互演示 · 全部为合成数据</h2><p>本页不包含实际场站数据。可切换日期、显示或隐藏曲线与阴影、查看分钟明细并导出演示结果。</p><p>GitHub Pages 不运行本项目的 Python 上传接口；分析自己的文件，请下载源码并在本机运行 <code>python serve_app.py --open</code>。</p><p><a href="https://github.com/HoRizon9688/wind-curtailment-analysis#readme" target="_blank" rel="noreferrer">查看源码与 PyCharm 启动说明 →</a></p></section>;
  const totalBytes=[...power,...forecast].reduce((s,f)=>s+f.size,0);
  const valid=power.length>0&&forecast.length>0&&Number(capacity)>0&&(!start||!end||start<=end)&&totalBytes<=60_000_000;
  async function submit(e){
