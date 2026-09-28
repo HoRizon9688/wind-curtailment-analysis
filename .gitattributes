@@ -6,3 +6,8 @@
 *.md text eol=lf
 *.css text eol=lf
 *.ps1 text eol=crlf
+# Synthetic fixtures must stay byte-identical: the tests assert their SHA-256,
+# and the CSV fixtures intentionally use CRLF while the GB18030 one is not UTF-8.
+tests/fixtures/browser/spike/*.csv binary
+tests/fixtures/browser/spike/*.xls binary
+tests/fixtures/browser/spike/*.xlsx binary
