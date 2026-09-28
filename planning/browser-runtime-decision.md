@@ -1,7 +1,8 @@
 # T0 决策记录：构建、文件解析与动态数据接入
 
 日期：2026-09-29。基线提交：`26fd0e7ff436f92327063140f5352cd9b6466327`。
-分支：`codex/browser-calculation`。阶段：T0（G0 待协调审核）。
+分支：`codex/browser-calculation`，T0 交付提交：`5c2d3c0d4537c8368f75d14c5ce0cd378ae86855`。
+阶段：T0（G0 待协调审核）。
 规范依据：`docs/superpowers/specs/2026-09-29-browser-calculation-design.md`；执行计划：`docs/superpowers/plans/2026-09-29-browser-calculation.md`。
 
 本文只记录验证结果与推荐决策。未修改 Python 计算口径，未发布，未改动任何真实数据，未绕过 `dashboard/AGENTS.md` 的保护。
@@ -264,7 +265,7 @@ node tests/browser/browser-spike/run.mjs
 
 ```text
 任务编号：T0
-起始基线 SHA / 完成 SHA / 分支：26fd0e7ff436f92327063140f5352cd9b6466327 / <本次提交 SHA> / codex/browser-calculation
+起始基线 SHA / 完成 SHA / 分支：26fd0e7ff436f92327063140f5352cd9b6466327 / 5c2d3c0d4537c8368f75d14c5ce0cd378ae86855 / codex/browser-calculation
 修改文件及各自目的：
   dashboard/src/content/calculation/table-reader.mjs   零依赖 CSV/OOXML 读取（可编辑路径）
   tests/browser/spike.test.mjs                          26 条读取断言
