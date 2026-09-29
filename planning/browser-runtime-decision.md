@@ -5,6 +5,17 @@
 阶段：T0（G0 待协调审核）。
 规范依据：`docs/superpowers/specs/2026-09-29-browser-calculation-design.md`；执行计划：`docs/superpowers/plans/2026-09-29-browser-calculation.md`。
 
+> **已被 `planning/T0-R-report-2026-09-29.md` 取代（2026-09-29）。**
+> 协调审核（`planning/T0-review-2026-09-29.md`）判定 G0 暂不通过，本文件的下列结论已被推翻，
+> 保留仅供追溯，请勿按本文件执行：
+> 1. §3「不新增依赖」——已改为采用 `read-excel-file@9.3.10`（连同 `fflate@0.8.3` 直接依赖）。
+> 2. §3.3「回退首个工作表」——错误，应回退工作簿的**活动**工作表；已修正并有对照样例。
+> 3. §4.2「31 天无 ≥50 ms 长任务」——观察器尾部记录漏报，实测存在约 145 ms 长任务。
+> 4. §5.4「由维护者重签清单」——不符合生成应用的逐路径授权流程，应调用
+>    `authorize-protected-change.mjs --confirmed --scope …` 由该脚本内部生成清单。
+> 5. §6/§7 的 `--authored-only .` 命令目录错误，应为 `--authored-only dashboard`。
+> 6. §2 遗漏第二项基线缺陷：`core.autocrlf=true` 的检出使受保护文本文件变 CRLF，完整校验必然失败。
+
 本文只记录验证结果与推荐决策。未修改 Python 计算口径，未发布，未改动任何真实数据，未绕过 `dashboard/AGENTS.md` 的保护。
 
 ---
@@ -46,7 +57,7 @@ node --test tests/dashboard.test.mjs tests/upload-model.test.mjs → 8 pass / 0 
 ```text
 node dashboard/scripts/verify-protected-runtime.mjs
 → Protected Data app runtime file is missing: .openai/hosting.json   (退出码 1)
-node dashboard/scripts/verify-protected-runtime.mjs --authored-only .
+node dashboard/scripts/verify-protected-runtime.mjs --authored-only dashboard
 → Data app authored content verified.                                (退出码 0)
 ```
 
@@ -188,7 +199,7 @@ DashboardContent：snapshot.queries.wind_minutes.rows（2,880 行）+ snapshot.w
 |---|---|---|---|
 | 1 | `dashboard/src/DataAppShell.jsx` | 把运行时**已有的**快照状态提交能力暴露给内容层（如 `commitSnapshot(updater)` 进入 `shellContext`）。`DataAppRuntime` 已经把 `setSnapshot` 作为 `onSnapshotChange` 传给 shell，此处只是让内容层也能合法调用同一通道，不新建 Provider、不覆盖 DOM。 | 新增一个条目 + 类型注释；不改现有分支 |
 | 2 | `dashboard/src/use-data-app.js` | 无 `queryDataStore` 时让 `queries` 跟随 `snapshot` prop（`queryDataStore ? store.getQueries() : (snapshot.queries ?? localQueries)`），否则换入的新快照不会传播到 `queries`，来源/图表/导出会读到旧行。 | 单行语义修正 |
-| 3 | `dashboard/protected-runtime.json` | 上述文件改动后必须由维护者重签完整性清单。**不得手工编辑**，须 `DATA_APP_MAINTAINER=1 … verify-protected-runtime.mjs --update --maintainer` 重新生成。 | 生成物 |
+| 3 | `dashboard/protected-runtime.json` | 上述文件改动后必须重签完整性清单。**不得手工编辑**，须由 `scripts/authorize-protected-change.mjs --confirmed --scope <逐路径>` 调用，由该脚本内部生成。 | 生成物（见 T0-R 报告） |
 
 配套要求（不新增受保护文件）：`dashboard/package.json`、`dashboard/package-lock.json`、`vite.config.js`、`index.html`、`scripts/*` **均不需要改动**——前提是采纳 §3 的零依赖路径。若改为引入 `read-excel-file`，则 `package.json` 与 `package-lock.json` 必须一并加入清单。
 
@@ -228,9 +239,6 @@ node --test tests/dashboard.test.mjs tests/upload-model.test.mjs
 
 # 3. 新增读取断言
 node --test tests/browser/spike.test.mjs
-
-# 4. 可编辑边界（受保护文件必须未被改动）
-node dashboard/scripts/verify-protected-runtime.mjs --authored-only .
 
 # 5. 真实浏览器验证（子路径 + Worker + 隐私）
 node tests/browser/browser-spike/run.mjs
@@ -276,7 +284,7 @@ node tests/browser/browser-spike/run.mjs
   planning/browser-runtime-decision.md                  本文
 是否涉及受保护文件，准确路径及授权/验证证据：
   未改动任何受保护文件。git status 仅显示上述新增路径。
-  node dashboard/scripts/verify-protected-runtime.mjs --authored-only . → 通过。
+  node dashboard/scripts/verify-protected-runtime.mjs --authored-only dashboard → 通过。
   完整清单校验因基线缺陷（.openai/hosting.json 未入库）失败，非本轮引入。
 输入/输出接口变化（没有则写无）：
   无冻结接口变更。新增内部函数 readTable/parseDelimited/dictionaryRows/excelSerialToDate/isDateFormat；

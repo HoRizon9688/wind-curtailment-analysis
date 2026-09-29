@@ -19,6 +19,8 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+import { buildSpike } from "./build.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const SERVE_ROOT = resolve(REPO_ROOT, "..");
@@ -50,22 +52,37 @@ const MIME = {
 const requestLog = [];
 let resolveResult;
 const resultPromise = new Promise((resolve) => { resolveResult = resolve; });
+const MARKER = "T0-R-SYNTHETIC-MARKER-6f2a91";
 
 const server = createServer((request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
-  requestLog.push({ method: request.method, path: url.pathname, bytes: Number(request.headers["content-length"] ?? 0) });
+  const entry = { method: request.method, path: url.pathname, query: url.search, bytes: Number(request.headers["content-length"] ?? 0) };
+  requestLog.push(entry);
 
   if (url.pathname === "/__result" && request.method === "POST") {
     const chunks = [];
     request.on("data", (chunk) => chunks.push(chunk));
     request.on("end", () => {
+      const body = Buffer.concat(chunks);
+      // Mirrors the page-side body check on the server side, so a body-bearing
+      // request cannot pass unnoticed just because the page instrumented it.
+      entry.bodyMentionsMarker = body.includes(MARKER);
+      entry.bodyBytes = body.length;
       response.writeHead(204).end();
+      // The page's positive control deliberately posts a marker body here; it
+      // must not be mistaken for the final report.
+      if (url.searchParams.has("probe")) return;
       try {
-        resolveResult(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        resolveResult(JSON.parse(body.toString("utf8")));
       } catch (error) {
         resolveResult({ fatal: `unparsable result: ${error.message}`, passed: false });
       }
     });
+    return;
+  }
+
+  if (url.pathname === "/favicon.ico") {
+    response.writeHead(204).end();
     return;
   }
 
@@ -91,7 +108,12 @@ async function main() {
   const port = Number(argument("--port", "9471"));
   await new Promise((resolveListen) => server.listen(port, "127.0.0.1", resolveListen));
   const origin = `http://127.0.0.1:${port}`;
-  const page = `${origin}${SUB_PATH}/tests/browser/browser-spike/index.html`;
+  // The page and its Worker are bundled with the project's Vite so the harness
+  // runs the real module graph. Both the repository prefix and the Worker URL
+  // are derived here and handed over, so nothing depends on the checkout name.
+  const built = await buildSpike();
+  const builtRelative = `${SUB_PATH}/reports/browser-review/T0/spike-build`;
+  const page = `${origin}${builtRelative}/index.html?prefix=${encodeURIComponent(SUB_PATH)}&worker=${encodeURIComponent(`${builtRelative}/spike-worker.js`)}`;
 
   const chrome = findChrome();
   const profile = join(tmpdir(), `t0-spike-${process.pid}`);
@@ -138,6 +160,26 @@ async function main() {
     servedRequests: requestLog,
     chromeConsole: chromeLog.join("").slice(0, 4000),
   };
+  // Server-side cross-check of the page's own body check. The declared local
+  // test channel (/__result) and its deliberate body control are separated out,
+  // so anything left in the leak field is genuinely unexpected.
+  const isControl = (entry) => (entry.query ?? "").includes("probe=body-control");
+  const isTestChannel = (entry) => entry.path === "/__result";
+  report.serverSide = {
+    bodiesMentioningMarkerOutsideTestChannel: requestLog.filter(
+      (entry) => entry.bodyMentionsMarker && !isTestChannel(entry),
+    ),
+    deliberateBodyControl: requestLog.filter((entry) => isControl(entry)),
+    testChannelPosts: requestLog.filter((entry) => isTestChannel(entry) && !isControl(entry)),
+    nonGetRequestsOutsideTestChannel: requestLog.filter(
+      (entry) => entry.method !== "GET" && !isTestChannel(entry),
+    ),
+  };
+  report.serverSide.bodyControlReachedServer = report.serverSide.deliberateBodyControl.length === 1;
+  report.serverSide.controlBodyWasSeenByServer =
+    report.serverSide.deliberateBodyControl.some((entry) => entry.bodyMentionsMarker === true);
+  report.serverSide.noLeakInAnyRequestBody =
+    report.serverSide.bodiesMentioningMarkerOutsideTestChannel.length === 0;
   const directory = join(REPO_ROOT, "reports", "browser-review", "T0");
   mkdirSync(directory, { recursive: true });
   const target = join(directory, "browser-spike.json");

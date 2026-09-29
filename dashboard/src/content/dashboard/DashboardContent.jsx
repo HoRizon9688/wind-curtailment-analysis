@@ -3,6 +3,7 @@ import {DataComponent,SortableRegion,SortableItem,useDataApp} from '../../data-a
 import {clock,filterRows,totals,bands,stepPath,hourly,csvText} from './wind-model.mjs';
 import './wind.css';
 import {UploadPanel,PeriodOverview,Exclusions} from './UploadPanel.jsx';
+import {T0AnalysisHarness} from './analysis-session.jsx';
 
 const C={a:'var(--wind-available)',p:'var(--wind-actual)',g:'var(--wind-agc)',f:'var(--wind-forecast)',theory:'var(--wind-theory)',dispatch:'var(--wind-dispatch)',prediction:'var(--wind-prediction)',other:'var(--wind-other)',missing:'var(--wind-missing)'};
 const L={a:'可用功率',p:'实发功率',g:'AGC 指令',f:'预测（线性插值）',theory:'理论功率',dispatch:'调度限电',prediction:'预测限电',other:'其他差额',missing:'已排除时段'};
@@ -80,10 +81,16 @@ export function DashboardContent(){
  const {snapshot}=useDataApp();
  const all=snapshot.queries.wind_minutes.rows;
  const report=snapshot.wind;
- const [date,setDate]=useState(report?.meta?.start||'');
+ const [selectedDate,setDate]=useState('');
+ // The selected day belongs to the analysis, not to the page: a new commit
+ // replaces the analysis and must reset the day view instead of keeping a date
+ // that no longer exists. Deriving it keeps the day selector working unchanged.
+ const dates=useMemo(()=>report?.daily?.map(d=>d.date)??[],[report]);
+ const date=dates.includes(selectedDate)?selectedDate:(dates[0]??'');
  const day=useMemo(()=>all.filter(r=>r.date===date),[all,date]);
  const ready=Boolean(report&&all.length);
  return <div className="wind-app">
+  <T0AnalysisHarness/>
   <UploadPanel hasResults={ready}/>
   {ready?<>
    <PeriodOverview report={report} rows={all} date={date} onDate={setDate}/>

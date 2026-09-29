@@ -87,18 +87,21 @@ const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy\\-mm\\-dd\\ hh:mm"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`;
 
-const COLUMNS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-
-function columnIndex(reference) {
-  const letters = /^([A-Z]+)/u.exec(reference)?.[1] ?? "";
-  let index = 0;
-  for (const letter of letters) index = index * 26 + (letter.charCodeAt(0) - 64);
-  return index - 1;
+/** Zero-based column index to Excel column letters (0 -> A, 16383 -> XFD). */
+function columnLetter(index) {
+  let remaining = index + 1;
+  let letters = "";
+  while (remaining > 0) {
+    const remainder = (remaining - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    remaining = Math.floor((remaining - 1) / 26);
+  }
+  return letters;
 }
 
 function cellXml(cell, rowIndex) {
   if (!cell || cell.blank) return "";
-  const reference = `${COLUMNS[cell.column ?? 0]}${rowIndex}`;
+  const reference = `${columnLetter(cell.column ?? 0)}${rowIndex}`;
   if (cell.inlineString !== undefined) {
     return `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${cell.inlineString}</t></is></c>`;
   }
@@ -113,7 +116,7 @@ function cellXml(cell, rowIndex) {
   return `<c r="${reference}"${style}><v>${cell.value}</v></c>`;
 }
 
-function buildXlsx({ sheetName, rows, date1904 = false }) {
+function sheetXml(rows) {
   const sheetData = rows
     .map((cells, index) => {
       const rowNumber = index + 1;
@@ -124,14 +127,25 @@ function buildXlsx({ sheetName, rows, date1904 = false }) {
       return `<row r="${rowNumber}">${body}</row>`;
     })
     .join("");
-  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetData}</sheetData></worksheet>`;
+}
+
+/**
+ * Builds a two-sheet workbook: `sheets[0]` becomes sheet1.xml, `sheets[1]`
+ * sheet2.xml. `activeTab` is written into `workbookView` so the "active
+ * worksheet" fallback can be exercised the way Excel and openpyxl see it.
+ */
+function buildXlsx({ sheets, activeTab = 0, date1904 = false }) {
+  const first = { rows: [], ...sheets[0] };
+  const second = { name: "Cover", rows: [[{ inlineString: "cover" }]], ...(sheets[1] ?? {}) };
+  const listed = [first, second]
+    .map((sheet, index) => `<sheet name="${sheet.name}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+    .join("");
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${date1904 ? '<workbookPr date1904="1"/>' : ""}<sheets><sheet name="${sheetName}" sheetId="1" r:id="rId1"/><sheet name="Cover" sheetId="2" r:id="rId2"/></sheets></workbook>`;
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${date1904 ? '<workbookPr date1904="1"/>' : ""}<bookViews><workbookView activeTab="${activeTab}"/></bookViews><sheets>${listed}</sheets></workbook>`;
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
-  const cover = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>cover</t></is></c></row></sheetData></worksheet>`;
 
   return makeZip([
     { name: "[Content_Types].xml", data: CONTENT_TYPES },
@@ -141,8 +155,8 @@ function buildXlsx({ sheetName, rows, date1904 = false }) {
     { name: "xl/styles.xml", data: STYLES },
     { name: "xl/sharedStrings.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="4" uniqueCount="4"><si><t>时间</t></si><si><t>预测id</t></si><si><t>名称</t></si><si><t>预测时间</t></si></sst>` },
-    { name: "xl/worksheets/sheet1.xml", data: sheet },
-    { name: "xl/worksheets/sheet2.xml", data: cover },
+    { name: "xl/worksheets/sheet1.xml", data: sheetXml(first.rows) },
+    { name: "xl/worksheets/sheet2.xml", data: sheetXml(second.rows) },
   ]);
 }
 
@@ -212,13 +226,82 @@ export function generate() {
   };
 
   write("minute-power.csv", "\uFEFF" + csv(minutePowerCsv()));
-  write("forecast-ooxml.xls", buildXlsx({ sheetName: "功率预测", rows: forecastRows() }));
-  write("minute-power-ooxml.xlsx", buildXlsx({ sheetName: "功率预测", rows: minutePowerRows() }));
-  write("forecast-1904.xlsx", buildXlsx({ sheetName: "功率预测", rows: forecastRows(), date1904: true }));
-  write(
-    "forecast-no-power-sheet.xls",
-    buildXlsx({ sheetName: "Sheet1", rows: forecastRows() }),
-  );
+  write("forecast-ooxml.xls", buildXlsx({
+    sheets: [{ name: "功率预测", rows: forecastRows() }, { name: "Cover" }],
+    activeTab: 0,
+  }));
+  write("minute-power-ooxml.xlsx", buildXlsx({
+    sheets: [{ name: "功率预测", rows: minutePowerRows() }, { name: "Cover" }],
+    activeTab: 0,
+  }));
+  write("forecast-1904.xlsx", buildXlsx({
+    sheets: [{ name: "功率预测", rows: forecastRows() }, { name: "Cover" }],
+    activeTab: 0,
+    date1904: true,
+  }));
+  // No 功率预测 sheet, active tab = first sheet.
+  write("forecast-no-power-sheet.xls", buildXlsx({
+    sheets: [{ name: "Sheet1", rows: forecastRows() }, { name: "Cover" }],
+    activeTab: 0,
+  }));
+  // The regression the coordinator found: a cover sheet first, the real table
+  // on the *active* second sheet. openpyxl's `book.active` reads the second one.
+  write("forecast-active-second.xlsx", buildXlsx({
+    sheets: [
+      { name: "封面", rows: [[{ inlineString: "本表为封面，不是数据表" }]] },
+      { name: "分钟数据", rows: forecastRows() },
+    ],
+    activeTab: 1,
+  }));
+  // Same layout but the cover is the active sheet: active fallback must follow it.
+  write("forecast-active-first.xlsx", buildXlsx({
+    sheets: [
+      { name: "封面", rows: [[{ inlineString: "本表为封面，不是数据表" }]] },
+      { name: "分钟数据", rows: forecastRows() },
+    ],
+    activeTab: 0,
+  }));
+  // Widest legal column (XFD, index 16384) to pin worksheet bounds behaviour.
+  write("bounds-wide.xlsx", buildXlsx({
+    sheets: [
+      {
+        name: "功率预测",
+        rows: [
+          [{ inlineString: "时间" }, { inlineString: "可用功率" }, { column: 16383, inlineString: "末列" }],
+          [{ inlineString: "2026/8/1 0:00" }, { value: 29.6 }, { column: 16383, value: 1.5 }],
+        ],
+      },
+      { name: "Cover" },
+    ],
+    activeTab: 0,
+  }));
+  // Empty middle cells. Both openpyxl and read-excel-file compact these rows
+  // instead of preserving the column reference, so the shared behaviour is
+  // pinned here rather than discovered later during the逐分钟 comparison.
+  write("gaps.xlsx", buildXlsx({
+    sheets: [
+      {
+        name: "功率预测",
+        rows: [
+          [{ inlineString: "A" }, { inlineString: "B" }, { inlineString: "C" }],
+          [{ inlineString: "a1" }, { column: 2, inlineString: "c1" }],
+          [{ column: 2, inlineString: "c2" }],
+        ],
+      },
+      { name: "Cover" },
+    ],
+    activeTab: 0,
+  }));
+  // A valid zip that is not a workbook: no xl/workbook.xml at all.
+  write("no-workbook.xlsx", makeZip([
+    { name: "[Content_Types].xml", data: CONTENT_TYPES },
+    { name: "payload.txt", data: "not a workbook" },
+  ]));
+  // A truncated OOXML package: the central directory is gone.
+  write("corrupt.xlsx", buildXlsx({
+    sheets: [{ name: "功率预测", rows: forecastRows() }, { name: "Cover" }],
+    activeTab: 0,
+  }).subarray(0, 900));
   // Legacy OLE2 compound file: must keep failing exactly like today.
   write("legacy-binary.xls", Buffer.concat([Buffer.from("d0cf11e0a1b11ae1", "hex"), Buffer.alloc(2048)]));
   // A text file that merely claims to be a workbook.

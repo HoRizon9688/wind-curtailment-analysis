@@ -21,11 +21,13 @@
     "@radix-ui/react-dialog": "^1.1.18",
     "@radix-ui/react-dropdown-menu": "^2.1.19",
     "figma-squircle": "1.1.0",
+    "fflate": "0.8.3",
     "html-to-image": "1.11.13",
     "lexical": "^0.44.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-markdown": "^10.1.0",
+    "read-excel-file": "9.3.10",
     "recharts": "^3.8.1"
   },
   "devDependencies": {

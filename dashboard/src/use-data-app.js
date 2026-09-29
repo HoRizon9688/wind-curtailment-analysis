@@ -189,10 +189,13 @@ export function useDataApp(snapshot, {
   filterDefinitions = snapshot.filters ?? [],
   visibleFilterIds = noVisibleReportFilters,
 } = {}) {
-  const [localQueries, setQueries] = useState(snapshot.queries);
+  // Owner edits are kept separately so that, without a query store, reviewed
+  // rows follow the *current* snapshot instead of freezing on its first value.
+  // A static build has no query store, and its analysis is replaced in memory.
+  const [ownerQueries, setQueries] = useState(null);
   useSyncExternalStore(queryDataStore?.subscribe ?? noSubscribe, queryDataStore?.getVersion ?? zeroVersion,
     queryDataStore?.getVersion ?? zeroVersion);
-  const queries = queryDataStore ? queryDataStore.getQueries() : localQueries;
+  const queries = queryDataStore ? queryDataStore.getQueries() : ownerQueries ?? snapshot.queries;
   const queriesRef = useRef(snapshot.queries);
   queriesRef.current = queries;
   const [filters, setFilters] = useState(() => Object.fromEntries(

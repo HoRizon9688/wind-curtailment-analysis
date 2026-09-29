@@ -16,3 +16,4 @@ dashboard/** text=auto eol=lf
 tests/fixtures/browser/spike/*.csv binary
 tests/fixtures/browser/spike/*.xls binary
 tests/fixtures/browser/spike/*.xlsx binary
+tests/fixtures/browser/*.json.gz binary

@@ -54,6 +54,12 @@ import { usePresentationHistory, usePresentationPersistence } from "./use-presen
 
 const defaultDashboardTabs = [{ id: "dashboard", label: "Dashboard" }];
 
+// Snapshot fields the shell owns. A static in-memory analysis commit must not be
+// able to rewrite app identity, permissions, filters or the reviewed query map.
+const shellOwnedSnapshotFields = new Set([
+  "id", "surface", "queries", "filters", "status", "buildStatus", "generatedAt", "_dataAppQueryLoading",
+]);
+
 // Use the same capture capability as quick copy/download, including resolved chart types.
 function chartExportAction(component, onSelect) {
   return <MenuItem icon="download" data-requires-chart-image onSelect={onSelect}>Export chart</MenuItem>;
@@ -1043,6 +1049,48 @@ export function DataAppShell({
     [canEdit],
   );
   const blockLayoutContext = useMemo(() => ({ blockLayouts, setBlockLayout }), [blockLayouts, setBlockLayout]);
+  // Authored content may replace the current analysis in memory on a static
+  // build, where the shell has no query store and no publication endpoint to
+  // write through. The patch is deliberately narrow: one *existing* reviewed
+  // query's rows and source metadata, plus the authored analysis object. App
+  // identity, surface, filters, permissions and the query map itself stay owned
+  // by the shell, so this is not a general snapshot setter.
+  const commitAnalysis = useCallback(
+    ({ queryId, rows, source, namespace, analysis } = {}) => {
+      if (hosted) {
+        throw new Error("A hosted Data app publication owns its data; in-memory analysis commit is only available on a static build.");
+      }
+      if (typeof queryId !== "string" || !queryId.trim()) {
+        throw new Error("An in-memory analysis commit requires a reviewed query id.");
+      }
+      if (!Array.isArray(rows)) {
+        throw new Error("An in-memory analysis commit requires an array of rows.");
+      }
+      if (source !== undefined && (source === null || typeof source !== "object" || Array.isArray(source))) {
+        throw new Error("An in-memory analysis commit source metadata must be an object.");
+      }
+      if (analysis !== undefined) {
+        if (typeof namespace !== "string" || !namespace.trim() || shellOwnedSnapshotFields.has(namespace)) {
+          throw new Error("An in-memory analysis commit requires an authored namespace that the shell does not own.");
+        }
+      }
+      // Validate against the current reviewed queries *before* the state update.
+      // Throwing inside the updater would surface as a render error instead of
+      // being refused at the call site, and would take the shell down with it.
+      if (!Object.hasOwn(queries ?? {}, queryId)) {
+        throw new Error(`Unknown reviewed query ${JSON.stringify(queryId)}.`);
+      }
+      onSnapshotChange?.((current) => ({
+        ...current,
+        queries: {
+          ...current.queries,
+          [queryId]: { ...current.queries[queryId], rows, ...(source === undefined ? {} : { source }) },
+        },
+        ...(analysis === undefined ? {} : { [namespace]: analysis }),
+      }));
+    },
+    [hosted, onSnapshotChange, queries],
+  );
   const shellContext = useMemo(
     () => ({
       snapshot: scopedSnapshot,
@@ -1050,6 +1098,7 @@ export function DataAppShell({
       canEdit,
       queries,
       queryDataStore,
+      commitAnalysis,
       filters,
       setFilter,
       reviewedRows,
@@ -1088,6 +1137,7 @@ export function DataAppShell({
       canEdit,
       queries,
       queryDataStore,
+      commitAnalysis,
       filters,
       setFilter,
       reviewedRows,
