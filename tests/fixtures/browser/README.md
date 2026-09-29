@@ -1,5 +1,18 @@
 # T0-R browser fixtures
 
+## Prerequisite: install the app dependencies first
+
+The reader adapter imports `read-excel-file` and `fflate`, so a fresh clone must
+install the app dependencies before any reader test or build can run:
+
+```sh
+cd dashboard && npm install && cd ..
+```
+
+Without it, `node --test tests/browser/spike.test.mjs` fails immediately with
+`ERR_MODULE_NOT_FOUND: Cannot find package 'fflate'`. `dashboard/node_modules`
+is gitignored, so a clone never contains it.
+
 All files here are **synthetic**. Nothing is derived from a real station, a real
 forecast export or a real report. The generators only write computed or literal
 values, and `tests/fixtures/browser/spike/python-baseline.py` reads the same
