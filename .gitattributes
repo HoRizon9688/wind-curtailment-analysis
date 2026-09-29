@@ -6,6 +6,11 @@
 *.md text eol=lf
 *.css text eol=lf
 *.ps1 text eol=crlf
+*.html text eol=lf
+# dashboard/protected-runtime.json hashes the worktree bytes of every protected
+# file. Without an explicit LF checkout, a Windows worktree (core.autocrlf=true)
+# gets CRLF and the full integrity check fails on every protected text file.
+dashboard/** text=auto eol=lf
 # Synthetic fixtures must stay byte-identical: the tests assert their SHA-256,
 # and the CSV fixtures intentionally use CRLF while the GB18030 one is not UTF-8.
 tests/fixtures/browser/spike/*.csv binary
