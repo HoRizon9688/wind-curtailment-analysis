@@ -160,7 +160,7 @@ T = Dloss + Floss + 指令以上阈值内差额
 | 层 | 技术 |
 |---|---|
 | 前端 | React 19、JavaScript/JSX、CSS；主要曲线与阴影为自定义SVG，React管理交互与状态 |
-| 页面运行时/构建 | Codex Data App提供主题、来源检查和页面容器；正常流程用Node调用Data插件预构建运行时。仓库保留Vite源构建配置 |
+| 页面运行时/构建 | Codex Data App提供主题、来源检查和页面容器；当前本机启动用Node调用Data插件的 `--source` 源构建，需要先安装锁定依赖 |
 | 后端 | Python标准库`ThreadingHTTPServer`/`SimpleHTTPRequestHandler`，不是Flask/Django；仅监听127.0.0.1 |
 | 数据计算 | openpyxl读Excel，csv读CSV；upload_pipeline.py负责校验与插值，threshold_allocation.py负责有状态归因 |
 | 通信/存储 | Fetch向`POST /api/calculate`提交JSON+Base64；本地CSV/JSON，无数据库 |
@@ -180,3 +180,9 @@ node --test tests/dashboard.test.mjs tests/upload-model.test.mjs
 原始数据、案例材料、真实快照、报告、凭据和IDE配置不上传Git。首次克隆缺少快照时，服务从空模板初始化上传页面。
 
 更多说明：[本机操作](本机使用说明.md)、[阈值归因](阈值归因说明.md)、[版本记录](VERSIONING.md)。保留的`curtailment.py`为v0.1.0基础JSON历史算法，见[历史核心说明](docs/legacy-core.md)，不要与当前网页算法混用。
+
+## 浏览器计算迁移进度
+
+`codex/browser-calculation` 分支已完成 T0-R2 和 T1。T1 固定了输入输出字段、单位、容差及纯合成 Python 对照；当前本机仍通过 Python 计算，线上浏览器上传计算尚未完成。详见 [T1 契约](docs/browser-calculation-contract.md) 与 [交付及审核](planning/T1-report-2026-10-04.md)。
+
+下一阶段为 T2 读取/时间/插值及 T3 分类/汇总。T1 审计发现 Excel 日期的 1 毫秒截断和少数数字字符串解析差异，T2 必须修复后再通过全流程审核；不通过修改 Python 公式或扩大容差掩盖差异。

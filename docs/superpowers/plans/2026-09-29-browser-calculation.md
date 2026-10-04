@@ -1,6 +1,6 @@
 # Browser Curtailment Calculation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. 本次用户指定由其他模型执行代码、原协调者审核；不自动派生或跨会话发送任务。Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. 初始协作安排为其他模型执行、原协调者审核；用户于 2026-10-04 改为由协调者自行执行并校验，当前仅推进已授权阶段。不自动派生或跨会话发送任务。Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让现有静态网页在浏览器内读取两类场站表格、按现行规则计算并更新完整分析。
 
@@ -134,12 +134,14 @@ test('CSV preserves empty cells', async () => {
 **输入：** G0 决策、未修改的 Python pipeline/allocator。
 **输出：** 完整样例清单、字段契约、通用比较器 `compareResults(expected,actual)`，不在测试运行时自动重写期望。
 
-- [ ] 生成纯合成输入及 Python 期望，记录源提交和文件 SHA-256；同时保留手工算例防止复制共同错误。
-- [ ] 设计样例覆盖：正常跟随、调度和预测同时存在、AGC 下限、明显高于预测、实发超过 AGC/预测/可用、阈值等号及附近、跨日、排除后重置。
-- [ ] 输入样例覆盖：编码、OOXML 假扩展名、日期系统、重复一致/冲突、缺列/重名列、多场站、缺节点、负实发、预测坏端点、首尾节点、366/367 天边界。
-- [ ] 比较器逐字段输出首个和全部差异的路径/时间/输入，不忽略布尔或 null；故意改一行状态、单位、排除原因，确认比较器会失败。
-- [ ] 固定容差：分钟数值绝对误差不超过 `1e-9`（单位随字段），汇总电量绝对误差不超过 `1e-6 MWh`；时间、状态、原因、计数、来源哈希精确一致。字段不存在和 null 不等价。若需放宽，必须说明数值误差来源由协调者审核。
-- [ ] 执行 `python tests/generate_browser_fixtures.py` 与 `node --test tests/browser/contracts.test.mjs`，检查生成文件均是合成数据；提交。
+- [x] 生成纯合成输入及 Python 期望，记录源提交和文件 SHA-256；同时保留手工算例防止复制共同错误。
+- [x] 设计样例覆盖：正常跟随、调度和预测同时存在、AGC 下限、明显高于预测、实发超过 AGC/预测/可用、阈值等号及附近、跨日、排除后重置。
+- [x] 输入样例覆盖：编码、OOXML 假扩展名、日期系统、重复一致/冲突、缺列/重名列、多场站、缺节点、负实发、预测坏端点、首尾节点、366/367 天边界。
+- [x] 比较器逐字段输出首个和全部差异的路径/时间/输入，不忽略布尔或 null；故意改一行状态、单位、排除原因，确认比较器会失败。
+- [x] 固定容差：分钟数值绝对误差不超过 `1e-9`（单位随字段），汇总电量绝对误差不超过 `1e-6 MWh`；时间、状态、原因、计数、来源哈希精确一致。字段不存在和 null 不等价。若需放宽，必须说明数值误差来源由协调者审核。
+- [x] 执行 `python tests/generate_browser_fixtures.py` 与 `node --test tests/browser/contracts.test.mjs`，检查生成文件均是合成数据；提交。
+
+2026-10-04 T1 交付及复审见 `planning/T1-report-2026-10-04.md`。允许开始 T2/T3 核心；T2 必须先使 `node tests/browser/audit-table-oracle.mjs` 零差异（当前存在 Excel 日期截断及数字转换差异）。G1 未通过，T4/T5 尚未放行。
 
 G1 对照不是比较 HTML，也不是只比较格式化后 3 位小数。
 
