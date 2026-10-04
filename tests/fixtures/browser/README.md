@@ -6,7 +6,7 @@ The reader adapter imports `read-excel-file` and `fflate`, so a fresh clone must
 install the app dependencies before any reader test or build can run:
 
 ```sh
-cd dashboard && npm install && cd ..
+cd dashboard && npm ci && cd ..
 ```
 
 Without it, `node --test tests/browser/spike.test.mjs` fails immediately with
@@ -41,8 +41,8 @@ stable. The GB18030 file needs Python because Node cannot encode that charset.
 | `forecast-no-power-sheet.xls` | No `功率预测`; `activeTab=0`, so the first sheet is read | `d39d070f5a2eb8feec6aecee4e6c44900c8f197be888075716b583752a50d053` | 3031 |
 | `forecast-active-second.xlsx` | Cover sheet first, real table on the **active second** sheet — the regression the coordinator found. openpyxl reads `分钟数据` | `3e93d22ce7fde6c0aec7a1eb46568fb86c3de5e03bfa53155b245fdc114b8c83` | 3106 |
 | `forecast-active-first.xlsx` | Same layout with the cover active, so the fallback must follow `activeTab` | `a597134c3f111f884e1eab9118d28632e5687875a22774a3a0672d62ae7bf578` | 3108 |
-| `bounds-wide.xlsx` | Value in the last legal column `XFD` (index 16384) | `61fa994f9ff9442ee47e9195b1600cd91a21c767cc433a7dd94975441456ffff` | 2869 |
-| `gaps.xlsx` | Empty middle cells, pinning the row-compaction both readers share | `e2be7042545022cc4a77587ba086d0baa8f9251708bb435ccd28fc75198fea92` | 2817 |
+| `bounds-wide.xlsx` | Value in the last legal column `XFD` (index 16384); the archive XML really contains `XFD1`/`XFD2` references (T0-R2: the generator used to overwrite the explicit column with the loop index, so this fixture never tested XFD) | `aa65ac3a6e4b93ced214fba538f8abe0cc6289aa847fe3480f7a3659c3bb62cb` | 2871 |
+| `gaps.xlsx` | Real sparse cells: the archive XML contains `A2`/`C2`/`C3` with no `B2`/`B3`. openpyxl reads `[['A','B','C'], ['a1', None, 'c1'], [None, None, 'c2']]` — empty middle columns are **preserved as null**, not compacted (T0-R2 correction) | `54164fcd7a36c0349c8a47dfeee481b9f1a161e376654ec0dedb4e18729b0794` | 2818 |
 | `no-workbook.xlsx` | Valid zip that is not a workbook (no `xl/workbook.xml`) | `3e3045c57af59a0a0b364eebf42ca52c0119e6390b6fb5f0cf737eead4a53ec2` | 538 |
 | `corrupt.xlsx` | Truncated OOXML package | `9bf118084a7101d8e8b25ac2af299a0dd01c9d271e1f889aff37d00084c059d8` | 900 |
 | `legacy-binary.xls` | OLE2 magic `D0CF11E0A1B11AE1`; must keep raising the existing error | `be7ba2b6815ac6866f093484fd0dd09830b681e987ad6edf19a2dcf7a8663425` | 2056 |
@@ -52,6 +52,7 @@ Properties pinned by these fixtures:
 
 - the cached `<v>` is used for formulas; a formula without `<v>` stays `null` and is **never** evaluated;
 - empty cells survive as `""` (CSV) or `null` (OOXML) instead of shifting columns;
+- empty **middle** columns keep their position as `null` (see `gaps.xlsx`): neither openpyxl nor the JS adapter compacts sparse rows, so a later value can never be mapped onto an earlier header;
 - dates follow the workbook date system and are recognised from the number format;
 - OOXML is detected from content, so the `.xls` extension keeps working;
 - worksheet selection is preferred-sheet → **active** sheet → first sheet;
@@ -85,3 +86,12 @@ compared against.
 ```sh
 python tests/fixtures/browser/spike/python-baseline.py
 ```
+
+T0-R2 adds direct XML checks for C2/C3/XFD references and real inflater
+allocation instrumentation. Run `node --test tests/browser/spike.test.mjs`.
+`tests/browser/use-data-app.test.mjs` contains initial SSR smoke checks only;
+same-mounted-instance updates and real owner tool calls are verified by
+`node tests/browser/browser-spike/run.mjs` through `runtime-priority.mjs`.
+The owner PUT responses in that probe are test-local stubs, never network
+uploads. Whole-shell rejection/source-preview/all-34-column CSV/storage checks
+run with `node tests/browser/shell-ab/run.mjs` after the source build.

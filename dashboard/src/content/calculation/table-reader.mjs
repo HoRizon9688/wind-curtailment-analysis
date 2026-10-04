@@ -14,7 +14,7 @@
  * Calculation semantics are untouched. `upload_pipeline.py` and
  * `threshold_allocation.py` remain the authoritative implementations.
  */
-import { Unzip, UnzipInflate } from "fflate";
+import { Unzip, UnzipInflate, unzipSync } from "fflate";
 import { readSheet } from "read-excel-file/universal";
 
 /** Mirrors `upload_pipeline.table_rows`: the expanded workbook cap. */
@@ -24,6 +24,19 @@ export const MAX_TOTAL_INPUT_BYTES = 60_000_000;
 /** Excel's own worksheet bounds, used to reject impossible dimensions. */
 export const MAX_SHEET_ROWS = 1_048_576;
 export const MAX_SHEET_COLUMNS = 16_384;
+/**
+ * Fixed input feed size. The output and working-buffer bounds below also
+ * account for an unfinished DEFLATE header/block carried between pushes.
+ */
+export const INFLATE_INPUT_CHUNK = 8192;
+// Pinned fflate 0.8.3: <= 1 KiB incomplete Huffman header, <= 64 KiB
+// unfinished stored block, <= 258 bytes for a final back-reference. Include
+// these on top of the maximum 1032:1 compressed expansion, not just feed size.
+export const MAX_INFLATE_EMISSION_BYTES = 1032 * (INFLATE_INPUT_CHUNK + 1024) + 65_536 + 258;
+// Inflate retains 32 KiB history. inflt.cbuf doubles a buffer to accommodate
+// output + its 128 KiB growth reserve. This bounds a SINGLE working allocation;
+// it is not a bound on total process memory, retained XML, DOM or table rows.
+export const MAX_INFLATE_TEMP_BYTES = 2 * (32_768 + MAX_INFLATE_EMISSION_BYTES + 131_072);
 /** Preferred worksheet, matching `upload_pipeline.table_rows`. */
 export const PREFERRED_SHEET = "功率预测";
 
@@ -151,17 +164,36 @@ function concatChunks(chunks) {
 }
 
 /**
- * Streams the archive once to (a) measure the **actual** expanded bytes across
- * every entry and abort past the cap, and (b) keep only the entries asked for.
+ * Streams the archive to (a) measure the **actual** expanded bytes across every
+ * entry and abort past the cap, and (b) keep only the entries asked for.
  *
  * The library's unzip has no size cap of its own, so this has to run before the
  * bytes reach it; afterwards the archive is known to expand within the cap.
  * Actual bytes are counted, not the sizes declared in the central directory.
+ *
+ * Aborting for real (T0-R2): `Unzip.push` is synchronous and recursive, so an
+ * early `return` from the data callback only skips *accounting* — the stream
+ * keeps expanding later entries. The abort therefore has to **throw** out of
+ * the callback, unwinding fflate's frames so the next entry's header is never
+ * parsed. `UnzipInflate.push` catches exceptions from its inner `Inflate` and
+ * reroutes them to the callback as an error; the callback rethrows its own
+ * abort, which escapes that catch block and propagates to the feeding loop.
+ *
+ * Output-allocation bound (T0-R2): feed in fixed pieces; allow for incomplete
+ * blocks and fflate's growing working buffers via the two exported bounds.
+ * Total emitted output at abort is <= limit + one emission. Neither bound
+ * claims to limit all subsequent XML parsing memory.
+ *
+ * @returns {{kept: Map<string, Uint8Array>, expandedBytes: number, largestEmission: number, perFile: Record<string, {emissions: number, bytes: number}>}}
+ * @throws {RangeError} with the same metrics attached (`expandedBytes`,
+ *   `largestEmission`, `perFile`) when the archive expands past `limit`.
  */
 export function inflateWithLimit(bytes, { keep = [], limit = MAX_UNCOMPRESSED_BYTES } = {}) {
   const wanted = new Set(keep);
   const kept = new Map();
+  const perFile = Object.create(null);
   let total = 0;
+  let largestEmission = 0;
   let failure = null;
 
   const unzipper = new Unzip();
@@ -169,16 +201,26 @@ export function inflateWithLimit(bytes, { keep = [], limit = MAX_UNCOMPRESSED_BY
   unzipper.onfile = (file) => {
     const isWanted = wanted.has(file.name);
     const chunks = [];
+    perFile[file.name] = { emissions: 0, bytes: 0 };
     file.ondata = (error, chunk, final) => {
-      if (failure) return;
+      // Throwing is the abort mechanism: returning early would let the
+      // synchronous stream continue into later entries (see the header note).
+      if (failure) throw failure;
       if (error) {
         failure = new TableError("", "压缩包条目损坏，无法读取");
-        return;
+        throw failure;
       }
+      const record = perFile[file.name];
+      record.emissions += 1;
+      record.bytes += chunk.length;
       total += chunk.length;
+      if (chunk.length > largestEmission) largestEmission = chunk.length;
       if (total > limit) {
         failure = new RangeError("EXPANDED_TOO_LARGE");
-        return;
+        failure.expandedBytes = total;
+        failure.largestEmission = largestEmission;
+        failure.perFile = perFile;
+        throw failure;
       }
       if (isWanted) chunks.push(chunk);
       if (final && isWanted) kept.set(file.name, concatChunks(chunks));
@@ -186,13 +228,22 @@ export function inflateWithLimit(bytes, { keep = [], limit = MAX_UNCOMPRESSED_BY
     file.start();
   };
 
+  const input = asUint8Array(bytes);
   try {
-    unzipper.push(asUint8Array(bytes), true);
+    for (let offset = 0; offset < input.length; ) {
+      const end = Math.min(offset + INFLATE_INPUT_CHUNK, input.length);
+      unzipper.push(input.subarray(offset, end), end === input.length);
+      if (failure) break; // fflate swallowed the throw somewhere; do not feed more
+      offset = end;
+    }
+    // A final empty push lets fflate surface truncation on complete input.
+    if (!failure && !input.length) unzipper.push(new Uint8Array(0), true);
   } catch (error) {
+    if (failure) throw failure;
     throw new TableError("", `压缩包损坏，无法读取（${error?.message ?? error}）`);
   }
   if (failure) throw failure;
-  return { kept, expandedBytes: total };
+  return { kept, expandedBytes: total, largestEmission, perFile };
 }
 
 function attribute(tag, name) {
@@ -257,6 +308,18 @@ export async function readTable(file) {
   if (isZip(bytes)) {
     let inflated;
     try {
+      // The public readSheet() API unpacks the archive a second time and uses
+      // CENTRAL-directory size hints to allocate output. Bound those hints as
+      // well, so a tiny real entry with an inflated size cannot bypass the
+      // streaming cap. filter=false enumerates metadata without decompression.
+      let declaredTotal = 0;
+      unzipSync(bytes, { filter(entry) {
+        const size = entry.originalSize;
+        if (!Number.isSafeInteger(size) || size < 0) throw new TableError(name, '压缩包条目大小无效');
+        declaredTotal += size;
+        if (declaredTotal > MAX_UNCOMPRESSED_BYTES) throw new RangeError('DECLARED_TOO_LARGE');
+        return false;
+      } });
       inflated = inflateWithLimit(bytes, { keep: ["xl/workbook.xml"] });
     } catch (error) {
       if (error instanceof RangeError) throw new TableError(name, "解压后超过 150 MB，请拆分文件");

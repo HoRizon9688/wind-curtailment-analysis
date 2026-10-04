@@ -65,11 +65,22 @@ if __name__ == "__main__":
         "forecast-active-second.xlsx",
         "forecast-active-first.xlsx",
         "bounds-wide.xlsx",
+        "gaps.xlsx",
         "no-workbook.xlsx",
         "corrupt.xlsx",
     ]
     for name in targets:
         try:
-            print(json.dumps(describe(name), ensure_ascii=False))
+            record = describe(name)
         except Exception as exc:  # noqa: BLE001 - report the failure verbatim
-            print(json.dumps({"file": name, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
+            record = {"file": name, "error": f"{type(exc).__name__}: {exc}"}
+        # gaps.xlsx pins the sparse-column baseline verbatim: full rows with
+        # None in the empty middle positions, not compacted.
+        if name == "gaps.xlsx" and "chosen" in record:
+            blob = (HERE / name).read_bytes()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                book = openpyxl.load_workbook(io.BytesIO(blob), read_only=True, data_only=True)
+            record["rows"] = [list(r) for r in book[list(book.sheetnames)[0]].values]
+            book.close()
+        print(json.dumps(record, ensure_ascii=False))

@@ -12,6 +12,7 @@
  * proxy used only to decide whether a Worker is justified.
  */
 import { readTable } from "../../../dashboard/src/content/calculation/table-reader.mjs";
+import { runtimePriorityChecks } from '../runtime-priority.mjs';
 
 const MARKER = "T0-R-SYNTHETIC-MARKER-6f2a91";
 const PARAMS = new URLSearchParams(globalThis.location?.search ?? "");
@@ -194,8 +195,12 @@ function runWorker(payload) {
 }
 
 async function main() {
+  // The regression probe stubs owner PUT responses locally and restores fetch
+  // before application-egress instrumentation; it never reaches the network.
+  const runtime = await runtimePriorityChecks();
   instrument();
   const results = {
+    runtimePriority: runtime,
     marker: MARKER,
     startedAt: new Date().toISOString(),
     prefix: PREFIX,
@@ -204,6 +209,7 @@ async function main() {
     // so the request log is not mistaken for application egress.
     localTestChannel: { endpoint: RESULT_ENDPOINT, carries: "test results only" },
   };
+  for (const entry of runtime.checks) check(entry.name, entry.passed, entry.detail);
   results.environment = {
     userAgent: navigator.userAgent,
     href: location.href,

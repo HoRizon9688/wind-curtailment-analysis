@@ -54,11 +54,13 @@ import { usePresentationHistory, usePresentationPersistence } from "./use-presen
 
 const defaultDashboardTabs = [{ id: "dashboard", label: "Dashboard" }];
 
-// Snapshot fields the shell owns. A static in-memory analysis commit must not be
-// able to rewrite app identity, permissions, filters or the reviewed query map.
-const shellOwnedSnapshotFields = new Set([
-  "id", "surface", "queries", "filters", "status", "buildStatus", "generatedAt", "_dataAppQueryLoading",
-]);
+// T0-R2: analysis namespaces the authored content may replace in memory on a
+// static build. This is a *whitelist*, not a blocklist: a snapshot field the
+// shell reads (report, visibleReportFilters, ...) is writable only if it is
+// registered here, so an unknown name is refused instead of silently allowed.
+// This project's analysis lives under `wind`. Registering another namespace is
+// an explicit product decision, not something content can do at runtime.
+const analysisNamespaces = new Set(["wind"]);
 
 // Use the same capture capability as quick copy/download, including resolved chart types.
 function chartExportAction(component, onSelect) {
@@ -1069,10 +1071,11 @@ export function DataAppShell({
       if (source !== undefined && (source === null || typeof source !== "object" || Array.isArray(source))) {
         throw new Error("An in-memory analysis commit source metadata must be an object.");
       }
-      if (analysis !== undefined) {
-        if (typeof namespace !== "string" || !namespace.trim() || shellOwnedSnapshotFields.has(namespace)) {
-          throw new Error("An in-memory analysis commit requires an authored namespace that the shell does not own.");
-        }
+      // Validate every supplied namespace, including a row-only commit. A
+      // payload may omit the analysis, but cannot register arbitrary fields.
+      if ((namespace !== undefined || analysis !== undefined)
+        && (typeof namespace !== "string" || !analysisNamespaces.has(namespace))) {
+        throw new Error("An in-memory analysis commit requires a registered analysis namespace.");
       }
       // Validate against the current reviewed queries *before* the state update.
       // Throwing inside the updater would surface as a render error instead of

@@ -120,8 +120,12 @@ function sheetXml(rows) {
   const sheetData = rows
     .map((cells, index) => {
       const rowNumber = index + 1;
+      // T0-R2: the cell's explicit `column` wins over the loop index. The old
+      // `{ ...cell, column }` spread let the array position overwrite it, so
+      // sparse-cell fixtures silently became dense and never contained the
+      // C2/C3/XFD references they claimed to test.
       const body = cells
-        .map((cell, column) => cellXml({ ...cell, column }, rowNumber))
+        .map((cell, column) => cellXml({ ...cell, column: cell.column ?? column }, rowNumber))
         .filter(Boolean)
         .join("");
       return `<row r="${rowNumber}">${body}</row>`;

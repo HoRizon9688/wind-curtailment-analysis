@@ -43,6 +43,7 @@ export async function buildSpike() {
     root: DASHBOARD,
     configFile: false,
     logLevel: "warn",
+    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
     build: {
       outDir: OUT_DIR,
       emptyOutDir: true,

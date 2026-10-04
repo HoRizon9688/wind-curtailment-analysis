@@ -13,8 +13,12 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import {
+  INFLATE_INPUT_CHUNK,
+  MAX_INFLATE_EMISSION_BYTES,
   MAX_SHEET_COLUMNS,
   MAX_TOTAL_INPUT_BYTES,
   MAX_UNCOMPRESSED_BYTES,
@@ -27,6 +31,7 @@ import {
   parseWorkbookMetadata,
   readTable,
 } from "../../dashboard/src/content/calculation/table-reader.mjs";
+import { makeZip } from "../fixtures/browser/spike/generate.mjs";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "browser", "spike");
 
@@ -190,26 +195,36 @@ test("a plain number in a date-formatted column is not turned into a date", asyn
   assert.equal(typeof table.rows[1][1], "number");
 });
 
-test("the last legal worksheet column (XFD) is readable and rows are not padded to it", async () => {
+test("the last legal worksheet column (XFD) is readable at its real position", async () => {
   assert.equal(MAX_SHEET_COLUMNS, 16_384);
   const table = await readTable(fixture("bounds-wide.xlsx"));
-  // openpyxl and read-excel-file both return only the cells present in the
-  // row, so the XFD value arrives at its compacted position.
-  assert.deepEqual(table.rows[0], ["时间", "可用功率", "末列"]);
-  assert.deepEqual(table.rows[1], ["2026/8/1 0:00", 29.6, 1.5]);
+  // T0-R2: the generator bug let the loop index overwrite the explicit column,
+  // so this fixture never actually contained XFD references. Verified directly
+  // in the archive XML (XFD1/XFD2 present) and against openpyxl, which reads
+  // the row padded to 16384 columns with nulls in the gap.
+  const [header, row] = table.rows;
+  assert.equal(header.length, MAX_SHEET_COLUMNS, `expected a 16384-wide row, got ${header.length}`);
+  assert.equal(header[0], "时间");
+  assert.equal(header[1], "可用功率");
+  assert.equal(header[MAX_SHEET_COLUMNS - 1], "末列");
+  assert.equal(row[0], "2026/8/1 0:00");
+  assert.equal(row[1], 29.6);
+  assert.equal(row[MAX_SHEET_COLUMNS - 1], 1.5);
+  // Intermediate columns stay null, so header mapping cannot misalign.
+  assert.equal(row[100], null);
 });
 
-test("empty middle cells compact identically to openpyxl (shared baseline behaviour)", async () => {
-  // python-baseline.py, openpyxl read_only:
-  //   ['A','B','C']   ['a1','c1']   ['c2']
-  // The library agrees on compaction and only pads to the widest row, which is
-  // invisible to dictionaryRows because `zip` ignores the extra trailing nulls.
-  // Pinned here so any future alignment change is a deliberate contract decision.
+test("empty middle cells are preserved as null, matching the openpyxl baseline", async () => {
+  // T0-R2: the old fixture was dense (the loop index overwrote cell.column),
+  // which made both readers look like they compacted sparse rows. The archive
+  // XML now really contains A2/C2/C3 (no B2/B3), and openpyxl reads:
+  //   [['A','B','C'], ['a1', None, 'c1'], [None, None, 'c2']]
+  // The JS adapter agrees, so empty middle columns keep their position and
+  // dictionaryRows cannot map a later value onto an earlier header.
   const table = await readTable(fixture("gaps.xlsx"));
   assert.deepEqual(table.rows[0], ["A", "B", "C"]);
-  assert.equal(table.rows[1][0], "a1");
-  assert.equal(table.rows[1][1], "c1");
-  assert.equal(table.rows[2][0], "c2");
+  assert.deepEqual(table.rows[1], ["a1", null, "c1"]);
+  assert.deepEqual(table.rows[2], [null, null, "c2"]);
 });
 
 test("legacy binary XLS keeps the existing error", async () => {
@@ -280,6 +295,140 @@ test("readTable reports the 150 MB message and records the real expanded size", 
   assert.ok(table.expandedBytes > 0 && table.expandedBytes < MAX_UNCOMPRESSED_BYTES);
   assert.ok(table.expandedBytes >= table.bytes, "expanded size must exceed the compressed size");
 });
+
+// ------------------------------------------ expansion limit (real abort, T0-R2)
+
+/**
+ * Coordinator's counterexample: two highly compressed entries (2 MB + 3 MB) in
+ * a ~5 KB archive. The previous implementation kept expanding every entry after
+ * the limit was crossed and only threw at the end, so `emitted` reached 5 MB.
+ */
+test("an over-limit archive aborts before later entries are expanded", () => {
+  const bomb = makeZip([
+    { name: "first.bin", data: Buffer.alloc(2_000_000, 0x61) },
+    { name: "second.bin", data: Buffer.alloc(3_000_000, 0x62) },
+  ]);
+  assert.ok(bomb.length < 20_000, `expected a small archive, got ${bomb.length} bytes`);
+
+  let failure = null;
+  try {
+    inflateWithLimit(bomb, { limit: 1_000 });
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof RangeError, `expected the abort to throw, got ${failure}`);
+  // The abort must happen while the FIRST entry is expanding: the second entry
+  // must never be started, let alone expanded to its 3 MB.
+  assert.deepEqual(
+    Object.keys(failure.perFile ?? {}),
+    ["first.bin"],
+    `later entries were expanded before the abort: ${JSON.stringify(failure.perFile)}`,
+  );
+  assert.ok(
+    failure.expandedBytes <= 2_000_000,
+    `output continued past the first entry: ${failure.expandedBytes} bytes emitted`,
+  );
+  // A bound on the overshoot: at most one emission past the limit.
+  assert.ok(
+    failure.largestEmission <= MAX_INFLATE_EMISSION_BYTES,
+    `single emission ${failure.largestEmission} exceeds the chunk-based bound`,
+  );
+  assert.ok(
+    failure.expandedBytes <= 1_000 + failure.largestEmission,
+    "emitted more than limit plus one emission past the abort point",
+  );
+});
+
+/**
+ * A single temporary output allocation must be bounded by the input chunk fed
+ * to the inflater, not by the entry size: a finite 16 MB incompressible entry
+ * exceeds the input chunk and must be emitted in pieces.
+ */
+test("a single emission is bounded by the input chunk fed to the inflater", () => {
+  // A repeated 256 KiB block exceeds DEFLATE's 32 KiB back-reference window,
+  // so it remains largely incompressible. High-ratio expansion is checked
+  // separately by the isolated 16 MB repeated-byte allocation probe.
+  const block = Buffer.alloc(256 * 1024);
+  let state = 0x9e3779b9;
+  for (let index = 0; index < block.length; index += 1) {
+    state ^= state << 13; state ^= state >>> 17; state ^= state << 5; state >>>= 0;
+    block[index] = state & 0xff;
+  }
+  const data = Buffer.concat(Array.from({ length: 64 }, () => block));
+  const bomb = makeZip([{ name: "big.bin", data }]);
+  assert.ok(bomb.length > INFLATE_INPUT_CHUNK, "expected the compressed entry to exceed one input chunk");
+
+  let failure = null;
+  try {
+    inflateWithLimit(bomb, { limit: 4_000_000 });
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof RangeError, `expected the abort to throw, got ${failure}`);
+  // The bound includes incomplete block/header carry between input pushes.
+  assert.ok(
+    failure.largestEmission <= MAX_INFLATE_EMISSION_BYTES,
+    `largest emission ${failure.largestEmission} exceeds 1032 x chunk (${1032 * INFLATE_INPUT_CHUNK})`,
+  );
+  // Piecewise emission for entries larger than the chunk: no single emission
+  // may carry a meaningful fraction of the whole entry.
+  assert.ok(
+    failure.largestEmission <= data.length / 4,
+    `the whole entry was expanded in one step: ${failure.largestEmission} of ${data.length}`,
+  );
+  assert.ok(failure.expandedBytes <= 4_000_000 + failure.largestEmission);
+  assert.deepEqual(Object.keys(failure.perFile ?? {}), ["big.bin"]);
+});
+
+test("the successful path reports per-entry emissions and the largest chunk", () => {
+  const inflated = inflateWithLimit(readFileSync(join(FIXTURES, "forecast-ooxml.xls")), {
+    keep: ["xl/workbook.xml"],
+  });
+  assert.ok(inflated.largestEmission > 0);
+  assert.ok(
+    inflated.largestEmission <= MAX_INFLATE_EMISSION_BYTES,
+    `largest emission ${inflated.largestEmission} exceeds the chunk-based bound`,
+  );
+  // Every entry in the workbook archive was started and fully accounted for.
+  const totalFromEntries = Object.values(inflated.perFile ?? {}).reduce((sum, entry) => sum + entry.bytes, 0);
+  assert.equal(totalFromEntries, inflated.expandedBytes);
+});
+
+test('real inflater allocations stay within an explicit temporary bound', async () => {
+  const probe = await promisify(execFile)(process.execPath, [fileURLToPath(new URL('./inflate-allocation-probe.mjs', import.meta.url))],
+    { encoding: 'utf8', timeout: 30_000 });
+  const result = JSON.parse(probe.stdout.trim());
+  assert.ok(Number.isFinite(result.declaredAllocationBound), 'temporary allocation bound must be explicit');
+  assert.ok(result.maximumAllocation > result.largestEmission, 'observe working buffers, not only emitted chunks');
+  assert.ok(result.maximumAllocation <= result.declaredAllocationBound, JSON.stringify(result));
+  assert.deepEqual(result.entries, ['first.bin']);
+  console.log('# allocation probe: ' + JSON.stringify(result));
+});
+
+test('sparse fixtures contain real C2/C3 and XFD cell references in the XML', () => {
+  const xml = (name) => new TextDecoder().decode(inflateWithLimit(fixture(name).bytes,
+    { keep: ['xl/worksheets/sheet1.xml'] }).kept.get('xl/worksheets/sheet1.xml'));
+  const gaps = xml('gaps.xlsx');
+  assert.match(gaps, /r="C2"/u);
+  assert.match(gaps, /r="C3"/u);
+  assert.doesNotMatch(gaps, /r="B[23]"/u);
+  const wide = xml('bounds-wide.xlsx');
+  assert.match(wide, /r="XFD1"/u);
+  assert.match(wide, /r="XFD2"/u);
+});
+
+test('oversized central-directory allocation hints are rejected before library parsing', async () => {
+  const bytes = Buffer.from(readFileSync(join(FIXTURES, 'forecast-ooxml.xls')));
+  for (let offset = 0; offset <= bytes.length - 28; offset += 1) {
+    if (bytes.readUInt32LE(offset) === 0x02014b50) {
+      bytes.writeUInt32LE(MAX_UNCOMPRESSED_BYTES + 1, offset + 24);
+      break;
+    }
+  }
+  await assert.rejects(() => readTable({ name: 'metadata-size.xlsx', bytes }),
+    (error) => error instanceof TableError && /150 MB/u.test(error.message));
+});
+
 
 // ------------------------------------------------------------------ hashing
 

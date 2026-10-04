@@ -151,9 +151,26 @@ export function T0AnalysisHarness() {
       commitUnknownQuery() {
         shell.commitAnalysis({ queryId: "not_a_reviewed_query", rows: [{}] });
       },
-      /** Must be refused: the shell owns app identity and filters. */
+      /** Must be refused: the shell owns app identity. */
       commitReservedNamespace() {
         shell.commitAnalysis({ queryId: ANALYSIS_QUERY_ID, rows: [{}], namespace: "id", analysis: {} });
+      },
+      /** Must be refused (T0-R2 S1): `report` is a shell-read field. */
+      commitReportNamespace() {
+        shell.commitAnalysis({ queryId: ANALYSIS_QUERY_ID, rows: [{}], namespace: "report", analysis: {} });
+      },
+      /** Must be refused (T0-R2 S1): `visibleReportFilters` is a shell-read field. */
+      commitVisibleReportFiltersNamespace() {
+        shell.commitAnalysis({ queryId: ANALYSIS_QUERY_ID, rows: [{}], namespace: "visibleReportFilters", analysis: {} });
+      },
+      /** Must be refused (T0-R2 S1): an unregistered namespace is unknown. */
+      commitUnknownNamespace() {
+        shell.commitAnalysis({ queryId: ANALYSIS_QUERY_ID, rows: [{}], namespace: "madeUpNamespace", analysis: {} });
+      },
+      /** Namespace validation must not disappear when the optional analysis is omitted. */
+      commitUnknownNamespaceWithoutAnalysis() {
+        shell.commitAnalysis({ queryId: ANALYSIS_QUERY_ID, rows: shell.queries[ANALYSIS_QUERY_ID].rows,
+          namespace: 'madeUpNamespace' });
       },
     };
     window.__T0__ = harness;

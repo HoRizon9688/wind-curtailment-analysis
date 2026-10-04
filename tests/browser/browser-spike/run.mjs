@@ -140,14 +140,16 @@ async function main() {
   child.stderr.on("data", (chunk) => chromeLog.push(String(chunk)));
 
   let result;
+  let deadline;
   try {
     result = await Promise.race([
       resultPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timed out waiting for the page result")), 150_000)),
+      new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("timed out waiting for the page result")), 150_000); }),
     ]);
   } catch (error) {
     result = { passed: false, fatal: error.message };
   } finally {
+    clearTimeout(deadline);
     child.kill();
     server.close();
   }

@@ -1,10 +1,18 @@
 import base64
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
-from serve_app import decode_uploads, validate_origin
+from serve_app import build_dashboard, decode_uploads, validate_origin
 
 
 class LocalServerTests(unittest.TestCase):
+    def test_local_build_resolves_installed_dependencies_from_source(self):
+        with patch.dict('os.environ', {'WIND_NODE': 'node', 'WIND_DATA_APP_SCRIPT': 'data-app.mjs'}), patch('serve_app.subprocess.run', return_value=SimpleNamespace(returncode=0)) as run:
+            build_dashboard(source_build=True)
+        command = run.call_args.args[0]
+        self.assertIn('--source', command)
+        self.assertNotIn('--separate-data', command)
+
     def test_upload_names_are_labels_not_server_paths(self):
         with self.assertRaisesRegex(ValueError, '文件名'):
             decode_uploads([{'name':'../data.csv','data':base64.b64encode(b'ok').decode()}])

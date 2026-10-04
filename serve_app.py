@@ -46,7 +46,7 @@ def decode_uploads(items):
     return files
 
 
-def build_dashboard(project_dir=None, *, local_context=True):
+def build_dashboard(project_dir=None, *, local_context=True, source_build=False):
     home = Path.home()
     node = os.environ.get('WIND_NODE') or shutil.which('node')
     if not node:
@@ -65,7 +65,8 @@ def build_dashboard(project_dir=None, *, local_context=True):
     if not local_context:
         environment.pop('CODEX_SESSION_ID',None)
         environment.pop('CODEX_THREAD_ID',None)
-    run = subprocess.run([node,plugin,'build','--project-dir',str(project_dir),'--separate-data'],
+    build_flag = '--source' if source_build else '--separate-data'
+    run = subprocess.run([node,plugin,'build','--project-dir',str(project_dir),build_flag],
                          cwd=ROOT,env=environment,capture_output=True,timeout=180,encoding='utf-8',errors='replace',
                          creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
     if run.returncode:
@@ -80,7 +81,7 @@ def calculate_and_build(payload):
     previous = path.read_bytes() if path.exists() else None
     path.write_text(json.dumps(snapshot_for(result,ROOT/'templates/dashboard-snapshot.json'),ensure_ascii=False,allow_nan=False),encoding='utf-8')
     try:
-        build_dashboard()
+        build_dashboard(source_build=True)
     except Exception:
         if previous is not None:
             path.write_bytes(previous)
@@ -151,7 +152,7 @@ def main():
     if not (ROOT/'dashboard/src/data.json').exists():
         shutil.copyfile(ROOT/'templates/dashboard-snapshot.json',ROOT/'dashboard/src/data.json')
     if not args.no_build:
-        build_dashboard()
+        build_dashboard(source_build=True)
     server=ThreadingHTTPServer(('127.0.0.1',args.port),partial(Handler,directory=str(ROOT/'dashboard/dist')))
     print(f'Wind analysis: http://127.0.0.1:{args.port}/?view=1&tab=dashboard',flush=True)
     print('Keep this window open. Press Ctrl+C to stop. Data stays on this computer.',flush=True)
