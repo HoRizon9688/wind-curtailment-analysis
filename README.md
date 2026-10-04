@@ -183,6 +183,6 @@ node --test tests/dashboard.test.mjs tests/upload-model.test.mjs
 
 ## 浏览器计算迁移进度
 
-`codex/browser-calculation` 分支已完成 T0-R2 和 T1。T1 固定了输入输出字段、单位、容差及纯合成 Python 对照；当前本机仍通过 Python 计算，线上浏览器上传计算尚未完成。详见 [T1 契约](docs/browser-calculation-contract.md) 与 [交付及审核](planning/T1-report-2026-10-04.md)。
+`codex/browser-calculation` 分支已完成 T0-R2、T1、T2 和 T3，G1 计算对照通过。已实现浏览器文件读取、时间匹配、预测分钟插值、阈值状态分类及完整结果汇总。详见 [T1 契约](docs/browser-calculation-contract.md) 与 [T2/T3 交付及审核](planning/T2-T3-report-2026-10-05.md)。
 
-下一阶段为 T2 读取/时间/插值及 T3 分类/汇总。T1 审计发现 Excel 日期的 1 毫秒截断和少数数字字符串解析差异，T2 必须修复后再通过全流程审核；不通过修改 Python 公式或扩大容差掩盖差异。
+T1 发现的 Excel 日期截断及数字字符串差异已修复；Python 公式、冻结样例和容差保持不变。浏览器计算核心已通过真实 Chrome 四时区完整结果核验，尚未接入上传页面。本机网页仍通过 Python 计算；下一步为 T4 Worker 任务、取消与性能验证，然后 T5 接入页面上传、结果更新及导出。当前网页启动方式保持不变。

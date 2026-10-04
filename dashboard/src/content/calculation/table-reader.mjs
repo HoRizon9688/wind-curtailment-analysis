@@ -16,6 +16,9 @@
  */
 import { Unzip, UnzipInflate, unzipSync } from "fflate";
 import { readSheet } from "read-excel-file/universal";
+import {pythonString,stripText} from './scalar.mjs';
+export {numberOrNull} from './scalar.mjs';
+import {workbookMetadata,worksheetPart,correctExcelDates} from './excel-dates.mjs';
 
 /** Mirrors `upload_pipeline.table_rows`: the expanded workbook cap. */
 export const MAX_UNCOMPRESSED_BYTES = 150_000_000;
@@ -40,13 +43,13 @@ export const MAX_INFLATE_TEMP_BYTES = 2 * (32_768 + MAX_INFLATE_EMISSION_BYTES +
 /** Preferred worksheet, matching `upload_pipeline.table_rows`. */
 export const PREFERRED_SHEET = "功率预测";
 
-const NUMERIC = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/u;
 
 export class TableError extends Error {
-  constructor(name, detail) {
+  constructor(name, detail, code='TABLE') {
     super(`${name}：${detail}`);
     this.name = "TableError";
     this.file = name;
+    this.code = code;
   }
 }
 
@@ -246,11 +249,6 @@ export function inflateWithLimit(bytes, { keep = [], limit = MAX_UNCOMPRESSED_BY
   return { kept, expandedBytes: total, largestEmission, perFile };
 }
 
-function attribute(tag, name) {
-  const match = new RegExp(`(?:^|\\s)${name}\\s*=\\s*"([^"]*)"`, "u").exec(tag);
-  return match ? match[1] : undefined;
-}
-
 /**
  * Reads the workbook's sheet order, active tab and date system.
  *
@@ -261,17 +259,10 @@ function attribute(tag, name) {
  * like openpyxl.
  */
 export function parseWorkbookMetadata(xml, name) {
-  const sheets = [...xml.matchAll(/<sheet\b([^>]*?)\/?>/gu)]
-    .map((match) => attribute(match[1], "name") ?? "")
-    .filter(Boolean);
-  if (!sheets.length) throw new TableError(name, "工作簿没有工作表");
-  const viewTag = /<workbookView\b([^>]*?)\/?>/u.exec(xml)?.[1];
-  const parsed = viewTag === undefined ? 0 : Number(attribute(viewTag, "activeTab") ?? "0");
-  return {
-    sheets,
-    activeTab: Number.isInteger(parsed) && parsed >= 0 && parsed < sheets.length ? parsed : 0,
-    date1904: /<workbookPr\b[^>]*date1904\s*=\s*"(?:1|true)"/iu.test(xml),
-  };
+  let result;
+  try {result=workbookMetadata(xml);}catch(error){throw new TableError(name,`工作簿元数据无效：${error.message}`);}
+  if(!result.sheets.length)throw new TableError(name,'工作簿没有工作表');
+  return result;
 }
 
 /** Preferred sheet, otherwise the workbook's active sheet, matching Python. */
@@ -299,7 +290,7 @@ export async function readTable(file) {
     throw new TableError(name, "仅支持 CSV、XLSX 和系统导出的 OOXML 格式 XLS");
   }
   if (bytes.length > MAX_TOTAL_INPUT_BYTES) {
-    throw new TableError(name, "文件超过 60 MB，请拆分后上传");
+    throw new TableError(name, "文件超过 60 MB，请拆分后上传",'RESOURCE');
   }
 
   const sha256 = await sha256Hex(bytes);
@@ -320,9 +311,9 @@ export async function readTable(file) {
         if (declaredTotal > MAX_UNCOMPRESSED_BYTES) throw new RangeError('DECLARED_TOO_LARGE');
         return false;
       } });
-      inflated = inflateWithLimit(bytes, { keep: ["xl/workbook.xml"] });
+      inflated = inflateWithLimit(bytes, { keep: ["xl/workbook.xml","xl/_rels/workbook.xml.rels"] });
     } catch (error) {
-      if (error instanceof RangeError) throw new TableError(name, "解压后超过 150 MB，请拆分文件");
+      if (error instanceof RangeError) throw new TableError(name, "解压后超过 150 MB，请拆分文件",'RESOURCE');
       throw new TableError(name, String(error?.message ?? error).replace(/^[^：]*：/u, ""));
     }
     const workbookXml = inflated.kept.get("xl/workbook.xml");
@@ -333,7 +324,16 @@ export async function readTable(file) {
     let rows;
     try {
       const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-      rows = await readSheet(buffer, sheetName);
+      rows = await readSheet(buffer, sheetName, {trim:false});
+      if(rows.some(row=>row.some(value=>value instanceof Date))) {
+        const decode=b=>new TextDecoder().decode(b);
+        const rels=inflated.kept.get('xl/_rels/workbook.xml.rels');
+        if(!rels)throw new Error('工作簿关系缺失');
+        const part=worksheetPart(decode(workbookXml),decode(rels),sheetName);
+        const sheet=inflateWithLimit(bytes,{keep:[part]}).kept.get(part);
+        if(!sheet)throw new Error('所选工作表文件缺失');
+        correctExcelDates(rows,decode(sheet),metadata.date1904);
+      }
     } catch (error) {
       throw new TableError(name, `无法读取工作表「${sheetName}」：${error?.message ?? error}`);
     }
@@ -365,7 +365,7 @@ export async function readTable(file) {
 export function dictionaryRows(table, required) {
   const rows = table?.rows ?? [];
   if (!rows.length) throw new TableError(table.name, "空文件");
-  const headers = (rows[0] ?? []).map((value) => (value === null || value === undefined ? "" : String(value).trim()));
+  const headers = (rows[0] ?? []).map((value) => (value === null || value === undefined ? "" : stripText(pythonString(value))));
   const missing = required.filter((column) => !headers.includes(column));
   if (missing.length) throw new TableError(table.name, `缺少列 ${[...missing].sort().join("、")}`);
   const present = headers.filter(Boolean);
@@ -380,15 +380,4 @@ export function dictionaryRows(table, required) {
     });
   }
   return out;
-}
-
-/** Numeric coercion matching `upload_pipeline.number`; dates are not numeric. */
-export function numberOrNull(value) {
-  if (typeof value === "boolean" || value === null || value === undefined) return null;
-  if (value instanceof Date) return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const text = String(value).trim();
-  if (!NUMERIC.test(text)) return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : null;
 }

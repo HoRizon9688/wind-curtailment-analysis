@@ -141,7 +141,9 @@ test('CSV preserves empty cells', async () => {
 - [x] 固定容差：分钟数值绝对误差不超过 `1e-9`（单位随字段），汇总电量绝对误差不超过 `1e-6 MWh`；时间、状态、原因、计数、来源哈希精确一致。字段不存在和 null 不等价。若需放宽，必须说明数值误差来源由协调者审核。
 - [x] 执行 `python tests/generate_browser_fixtures.py` 与 `node --test tests/browser/contracts.test.mjs`，检查生成文件均是合成数据；提交。
 
-2026-10-04 T1 交付及复审见 `planning/T1-report-2026-10-04.md`。允许开始 T2/T3 核心；T2 必须先使 `node tests/browser/audit-table-oracle.mjs` 零差异（当前存在 Excel 日期截断及数字转换差异）。G1 未通过，T4/T5 尚未放行。
+2026-10-04 T1 交付及复审见 `planning/T1-report-2026-10-04.md`。允许开始 T2/T3 核心；T2 必须先使 `node tests/browser/audit-table-oracle.mjs` 零差异（T1 时存在 Excel 日期截断及数字转换差异）。T1 当时 G1 未通过，T4/T5 尚未放行；后续裁决见下条更新。
+
+2026-10-05 T2/T3 已完成并通过 G1；交接材料独立审计、修正项及复现命令见 `planning/T2-T3-report-2026-10-05.md`。允许下一阶段执行 T4，本轮未开始 T4/T5。
 
 G1 对照不是比较 HTML，也不是只比较格式化后 3 位小数。
 
@@ -150,12 +152,12 @@ G1 对照不是比较 HTML，也不是只比较格式化后 3 位小数。
 **文件：** `table-reader.mjs`、`time.mjs`、`input-model.mjs`、`interpolation.mjs`；测试 `tests/browser/input.test.mjs`、`tests/browser/interpolation.test.mjs`。
 **输入：** InputFile、T1 fixtures 与契约；**输出：** normalized、alignedForecast，不包含分类算法。
 
-- [ ] 先编写表头、编码、重复、时区、端点插值失败测试；执行对应 Node 测试确认缺失功能。
-- [ ] 实现原始字节哈希、OOXML内容检测、解压限额、CSV严格解码；不得硬编码 Windows 路径。
-- [ ] 实现固定 UTC+08 日期转换，禁止依赖浏览器本地时区；有偏移 ISO 正确换算，秒非零拒绝。日期系统问题不得以统一加一天修补。
-- [ ] 实现单场站校验、重复一致去重、冲突拒绝、空预测跳过和计数，保留来源文件与行号。
-- [ ] 将预测版本 +15 分钟映射成目标节点；精确节点优先，非连续左右节点返回 `{f:null}`。
-- [ ] 使用以下手工算例并与 Python fixtures 全量比对，运行两个测试文件，提交 T2。
+- [x] 先编写表头、编码、重复、时区、端点插值失败测试；执行对应 Node 测试确认缺失功能。
+- [x] 实现原始字节哈希、OOXML内容检测、解压限额、CSV严格解码；不得硬编码 Windows 路径。
+- [x] 实现固定 UTC+08 日期转换，禁止依赖浏览器本地时区；有偏移 ISO 正确换算，秒非零拒绝。日期系统问题不得以统一加一天修补。
+- [x] 实现单场站校验、重复一致去重、冲突拒绝、空预测跳过和计数，保留来源文件与行号。
+- [x] 将预测版本 +15 分钟映射成目标节点；精确节点优先，非连续左右节点返回 `{f:null}`。
+- [x] 使用以下手工算例并与 Python fixtures 全量比对，运行两个测试文件，提交 T2。
 
 ```js
 import test from 'node:test';
@@ -179,12 +181,12 @@ test('one minute interpolation and no bridging', () => {
 **文件：** `threshold-allocator.mjs`、`aggregate.mjs`、`analyze.mjs`；测试 `tests/browser/allocation.test.mjs`、`tests/browser/pipeline.test.mjs`。
 **输入：** normalized/Options；**输出：** Result，完整兼容 Python 结果语义。
 
-- [ ] 先移植现有 `tests/test_threshold_allocation.py` 全部行为，尤其滞回序列，运行确认失败。
-- [ ] 逐行映射 allocator：保持状态推进顺序、`>`/`<=`、2%下限参考和 P 修正；能量只除以 60 一次。
-- [ ] 生成每日完整分钟网格；复现开始/结束推定、坏节点/功率排除、负实发策略，排除时 reset，跨日不 reset。
-- [ ] 实现 per-reason 半开缺失区间及唯一排除计数，整期/日统计和 calibration，保持状态值和 null。
-- [ ] 对合成序列/固定种子随机输入检验非负、两条闭合式和按分类阴影高度积分；阈值附近序列不能通过随机测试替代。
-- [ ] 跑 T1 全量对照，报告最大误差与差异行数；重复同输入结果一致（允许显式生成时间变化）。交 G1 审核后提交/整合。
+- [x] 先移植现有 `tests/test_threshold_allocation.py` 全部行为，尤其滞回序列，运行确认失败。
+- [x] 逐行映射 allocator：保持状态推进顺序、`>`/`<=`、2%下限参考和 P 修正；能量只除以 60 一次。
+- [x] 生成每日完整分钟网格；复现开始/结束推定、坏节点/功率排除、负实发策略，排除时 reset，跨日不 reset。
+- [x] 实现 per-reason 半开缺失区间及唯一排除计数，整期/日统计和 calibration，保持状态值和 null。
+- [x] 对合成序列/固定种子随机输入检验非负、两条闭合式和按分类阴影高度积分；阈值附近序列不能通过随机测试替代。
+- [x] 跑 T1 全量对照，报告最大误差与差异行数；重复同输入结果一致（允许显式生成时间变化）。交 G1 审核后提交/整合。
 
 ```js
 import test from 'node:test';

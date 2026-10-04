@@ -28,7 +28,8 @@
     "react-dom": "^19.2.3",
     "react-markdown": "^10.1.0",
     "read-excel-file": "9.3.10",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "saxen": "11.2.0"
   },
   "devDependencies": {
     "vite": "^8.0.8",
