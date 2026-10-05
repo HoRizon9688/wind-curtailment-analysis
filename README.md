@@ -1,6 +1,6 @@
 # 风电场限电量分析 · v0.2.0
 
-`codex/browser-calculation` 分支的 T5 网页已默认在浏览器内计算，不需要 Python 计算接口。已发布的 GitHub Pages 仍是旧静态演示，T6 候选构建与发布尚未执行。
+`codex/browser-calculation` 分支的 T5 网页已默认在浏览器内计算，不需要 Python 计算接口。已发布的 GitHub Pages 仍是旧静态演示，T6 静态候选已在本机完成；线上发布尚未执行。
 
 本机网页支持上传一分钟功率表和“数据下载”超短期预测表，完成校验、插值、限电分解和图表展示。支持不同场站分批导入及连续多日期分析。结果为内部规则估算，不等同于调度责任或结算认定。
 
@@ -70,7 +70,7 @@ WIND_NODE=C:/Users/HoRizon/.cache/codex-runtimes/codex-primary-runtime/dependenc
 WIND_DATA_APP_SCRIPT=C:/Users/HoRizon/.codex/plugins/cache/openai-curated-remote/data-analytics/1.0.11/scripts/data-app.mjs
 ```
 
-按实际安装路径/插件版本调整。日常不要求`npm install`或`npm run dev`。旧4173预览可能是过期构建，请使用重新构建后的4180地址。新的浏览器计算不依赖上传接口；静态候选包及其完整启动说明将在T6提供。
+按实际安装路径/插件版本调整。日常不要求`npm install`或`npm run dev`。旧4173预览可能是过期构建，请使用重新构建后的4180地址。新的浏览器计算不依赖上传接口；静态候选包的运行、构建和后续 Cloudflare 说明见 [静态候选指南](docs/static-candidate-guide.md)。
 
 ## 输入与时间对应
 
@@ -190,8 +190,10 @@ node --test --test-concurrency=1 tests/dashboard.test.mjs tests/upload-model.tes
 
 ## 浏览器计算迁移进度
 
-`codex/browser-calculation` 已完成 T0-R2、T1—T5，G1 核心对照与 G2 网页验收通过。T5 完成真实上传、Worker 接入、成功分析原子更新、来源及导出；保留主题与显隐偏好，重置日期、范围、分页和回放。公式、冻结样例和容差未改。
+`codex/browser-calculation` 已完成 T0-R2、T1—T6，G1 核心对照与 G2 网页验收通过。T5 完成真实上传、Worker 接入、成功分析原子更新、来源及导出；保留主题与显隐偏好，重置日期、范围、分页和回放。公式、冻结样例和容差未改。
 
 T5 验收：Python 62/62、Node 102/102、保护验证234文件、Chrome真实整页25项。31天44,640分钟从表单读取到结果呈现约1.90秒；这是本机合成输入实测，不是性能保证。15/31/366天核心性能见T4；366天完整业务UI、真实八月私有对照和其他浏览器/低内存设备尚未在T5验证。
 
-详见 [契约](docs/browser-calculation-contract.md)、[T2/T3](planning/T2-T3-report-2026-10-05.md)、[T4](planning/T4-report-2026-10-05.md)、[T5](planning/T5-report-2026-10-05.md)。下一步为T6静态候选构建、发布说明及G3审核；本轮未更新线上站点。
+详见 [契约](docs/browser-calculation-contract.md)、[T2/T3](planning/T2-T3-report-2026-10-05.md)、[T4](planning/T4-report-2026-10-05.md)、[T5](planning/T5-report-2026-10-05.md)。T6新增独立合成候选/清单/审核ZIP及回退包，在根路径和仓库子路径直接测试未经改写的包。Python74/74、Node102/102、真实候选22项及保护234文件通过。详见 [T6交付](planning/T6-report-2026-10-05.md) 与 [候选指南](docs/static-candidate-guide.md)。
+
+下一步为真实八月私有回归和整体R/G3审核。GitHub Pages暂不更新；之后按用户意向评估Cloudflare免费静态托管，尚未创建或发布站点。

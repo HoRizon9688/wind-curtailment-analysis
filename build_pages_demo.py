@@ -16,7 +16,7 @@ from upload_pipeline import analyze_uploads, snapshot_for
 ROOT=Path(__file__).resolve().parent
 
 
-def create_demo():
+def create_demo_inputs():
     """No reads of measurements, reports or local snapshots occur here."""
     start=datetime(2026,1,1)
     def forecast(t):
@@ -44,9 +44,15 @@ def create_demo():
         if target.day==1 and target.hour==10 and target.minute in (30,45):
             continue
         fw.writerow(['SYNTHETIC_DEMO','示例风电场（合成数据）',(target-timedelta(minutes=15)).isoformat(),forecast(target)])
-    return analyze_uploads([('synthetic-minute-power.csv',power.getvalue().encode('utf-8-sig'))],
-                           [('synthetic-forecast.csv',text.getvalue().encode('utf-8-sig'))],
-                           start='2026-01-01',end='2026-01-02',capacity=56)
+    return {'power':[('synthetic-minute-power.csv',power.getvalue().encode('utf-8-sig'))],
+            'forecast':[('synthetic-forecast.csv',text.getvalue().encode('utf-8-sig'))],
+            'options':{'start':'2026-01-01','end':'2026-01-02','capacity':56}}
+
+
+def create_demo():
+    files=create_demo_inputs()
+    return analyze_uploads(files['power'],files['forecast'],**files['options'])
+
 
 
 def main():

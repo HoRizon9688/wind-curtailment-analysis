@@ -6,7 +6,7 @@ import {dirname,join,resolve,relative,sep,extname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {tmpdir} from 'node:os';
 export const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export async function launchProbe(entry,stage='T4') {
+export async function launchProbe(entry,stage='T4',options={}) {
   const out=join(ROOT,`reports/browser-review/${stage}/probe-build`);
   if(entry) {
     const {build}=await import(pathToFileURL(join(ROOT,'dashboard/node_modules/vite/dist/node/index.js')));
@@ -14,12 +14,15 @@ export async function launchProbe(entry,stage='T4') {
     writeFileSync(join(out,'index.html'),'<!doctype html><title>Synthetic browser probe</title><div id="result"></div><div id="chart"></div><button id="cancel">Cancel</button><script type="module" src="./probe.js"></script>');
   }
   const requests=[];
-  const prefix='/wind-curtailment-analysis';
+  const prefix=options.prefix??'/wind-curtailment-analysis';
+  const servingRoot=options.siteRoot?resolve(options.siteRoot):ROOT;
+  const networkRequests=[],browserErrors=[];
   const server=createServer((req,res)=>{
     requests.push({method:req.method,path:req.url,bytes:Number(req.headers['content-length']??0)});
     const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
     if(!path.startsWith(prefix+'/')){res.writeHead(404).end();return;}
-    const target=resolve(ROOT,'.'+path.slice(prefix.length)),rel=relative(ROOT,target);
+    const suffix=path.slice(prefix.length);
+    const target=options.siteRoot?resolve(servingRoot,'.'+(suffix==='/'?'/index.html':suffix)):resolve(ROOT,'.'+suffix),rel=relative(servingRoot,target);
     if(rel.startsWith('..')||rel.startsWith(sep)||!existsSync(target)||!statSync(target).isFile()){res.writeHead(404).end();return;}
     res.setHeader('content-type',extname(target)==='.html'?'text/html; charset=utf-8':extname(target)==='.js'?'text/javascript; charset=utf-8':'application/octet-stream');
     // Cache only program modules; synthetic data and result pages are no-store.
@@ -37,6 +40,8 @@ export async function launchProbe(entry,stage='T4') {
     ws=new WebSocket(endpoint);await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
     let id=0;const pending=new Map(),workerSessions=new Set();
     ws.addEventListener('message',e=>{const m=JSON.parse(e.data);
+      if(m.method==='Network.requestWillBeSent')networkRequests.push({url:m.params.request.url,method:m.params.request.method,postData:m.params.request.postData??null});
+      if(m.method==='Runtime.exceptionThrown')browserErrors.push(m.params.exceptionDetails.text);
       if(m.method==='Target.attachedToTarget'&&m.params.targetInfo.type==='worker')workerSessions.add(m.params.sessionId);
       if(m.method==='Target.detachedFromTarget')workerSessions.delete(m.params.sessionId);
       const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);if(m.error)p.reject(new Error(JSON.stringify(m.error)));else p.resolve(m.result);
@@ -45,8 +50,9 @@ export async function launchProbe(entry,stage='T4') {
     const {targetId}=await call('Target.createTarget',{url:'about:blank'}),{sessionId}=await call('Target.attachToTarget',{targetId,flatten:true});
     await call('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:false,flatten:true},sessionId);
     const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true},sessionId);if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
-    await call('Page.navigate',{url:`${origin}${prefix}/reports/browser-review/${stage}/probe-build/index.html`},sessionId);
-    for(let i=0;i<100;i++){if(await evaluate('window.probeReady === true'))break;if(i===99)throw new Error('Probe module graph not ready');await new Promise(r=>setTimeout(r,100));}
-    return {evaluate,call,sessionId,workerSessions,requests,prefix,version:await call('Browser.getVersion'),close:async()=>{clearTimeout(startTimer);for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Probe closed'));}ws.close();child.kill();await new Promise(r=>server.close(r));}};
+    await call('Network.enable',{},sessionId);await call('Runtime.enable',{},sessionId);
+    await call('Page.navigate',{url:options.siteRoot?`${origin}${prefix}/?t0-harness&view=1&tab=dashboard`:`${origin}${prefix}/reports/browser-review/${stage}/probe-build/index.html`},sessionId);
+    for(let i=0;i<100;i++){if(await evaluate(options.ready??'window.probeReady === true'))break;if(i===99)throw new Error('Probe module graph not ready');await new Promise(r=>setTimeout(r,100));}
+    return {evaluate,call,sessionId,workerSessions,requests,networkRequests,browserErrors,origin,prefix,version:await call('Browser.getVersion'),close:async()=>{clearTimeout(startTimer);for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Probe closed'));}ws.close();child.kill();await new Promise(r=>server.close(r));}};
   } catch(e){clearTimeout(startTimer);ws?.close();child.kill();server.close();throw e;}
 }
