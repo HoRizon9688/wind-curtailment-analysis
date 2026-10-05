@@ -77,7 +77,8 @@ export function createSemanticColorMetadataAccumulator() {
     const queryDimensions = new Map();
     const queryMeasures = new Set();
     for (const row of rows) {
-      for (const [field, value] of Object.entries(row)) {
+      for (const field of Object.keys(row)) {
+        const value = row[field];
         if (typeof value === "number" && Number.isFinite(value)) {
           queryMeasures.add(field);
           continue;

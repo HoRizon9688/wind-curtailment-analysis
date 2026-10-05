@@ -63,7 +63,7 @@
     "src/charting/chart-mark-interactions.js": "d93877eb6ef8324f0109277754e04affac135769a18f2d2d99d51d8382abb726",
     "src/charting/chart-overrides.js": "09e15338c86d93f7fb9845757d0ba223f71705d540ec467c18d32df7b10bb8f9",
     "src/charting/chart-spec-validation.js": "a293a06bc346734f25742f79d100ce45c45d107ec5c368965f931bf2d7b5c5f8",
-    "src/charting/chart-theme.js": "21367c8f24bd4122e85efe4bac43e2e6fa8567a0d098cf8d03158dd183342cb9",
+    "src/charting/chart-theme.js": "a8ff9d6d5a32ee2de474e5270508a50a5b62d7c09274722d0c375d8c614b1f7b",
     "src/charting/chart-transforms.js": "782d55023ec8dddfb99e7c5584c39cc23e102317aa3ca1e4668043c8814c3e86",
     "src/charting/experimental-bar-chart.css": "b9117bdd6cd0f441f23b82a6d79fd17fc3e13e2f2003d631afc0827b2cf8174e",
     "src/charting/table-data.js": "2e61118fccdba5c565e1995fab213da44750817d9a7da85593776d5793234ef2",
