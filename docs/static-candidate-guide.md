@@ -4,12 +4,12 @@
 
 ## 查看候选，无需计算后端
 
-最终候选路径及SHA见 `planning/T6-report-2026-10-05.md`；候选在被Git忽略的 `reports/static-candidates/`。审核ZIP含site、使用说明及清单，**不是直接部署的根目录ZIP**；部署时只选 `site/` 目录内容。
+原T6候选路径及SHA见 `planning/T6-report-2026-10-05.md`。2026-10-05更新候选见 `planning/RG3-report-2026-10-05.md`：小时柱形再次点击恢复全天；真实八月数值与31天功能通过，但年度响应目标仍未通过，G3暂不放行。候选在被Git忽略的 `reports/static-candidates/`。审核ZIP含site、使用说明及清单，**不是直接部署的根目录ZIP**；部署时只选 `site/` 目录内容。
 
 以报告中的候选目录为例，在项目终端运行：
 
 ```powershell
-python -m http.server 4190 --bind 127.0.0.1 --directory reports/static-candidates/T6-2026-10-05-final/site
+python -m http.server 4190 --bind 127.0.0.1 --directory reports/static-candidates/RG3-2026-10-05-final/site
 ```
 
 打开 `http://127.0.0.1:4190/?view=1&tab=dashboard`。这个Python进程只提供静态文件，既无health/calculate API，也不接收所选文件；可用其他静态服务器在localhost提供，正式托管使用HTTPS；SHA-256与任务ID依赖安全上下文中的Web Crypto。最终在线访问者只需支持相关浏览器API的浏览器，不需要Python、Node、Codex或Data插件。不要拿过期4173页面作为新版本验收对象。
@@ -18,7 +18,7 @@ python -m http.server 4190 --bind 127.0.0.1 --directory reports/static-candidate
 
 文件在当前标签页通过File.arrayBuffer交给Web Worker处理，成功后一次性更新分析。失败/取消保留原分析；刷新、关闭或另开标签页从初始示例开始，需要重新导入。结果不会自动写磁盘，请主动导出整期分钟、逐日汇总、排除区间或完整JSON（含calibration）；当前日图表范围也可下载。主题等展示偏好可由壳层保留，用户文件和计算结果不自动保存。
 
-支持标准首行列名的CSV（UTF-8/BOM/GB18030）、XLSX、实际OOXML格式的XLS；旧二进制XLS应另存XLSX。UTC+08、MW、一分钟功率数据；预测第二点按版本+15分钟映射并线性插值，缺失不补零。每类400文件、总计60,000,000字节、工作簿解压150MB、1—366天。366天核心已测试，全年完整界面/巨型导出和低内存设备未验收，建议先分批较短日期。
+支持标准首行列名的CSV（UTF-8/BOM/GB18030）、XLSX、实际OOXML格式的XLS；旧二进制XLS应另存XLSX。UTC+08、MW、一分钟功率数据；预测第二点按版本+15分钟映射并线性插值，缺失不补零。每类400文件、总计60,000,000字节、工作簿解压150MB、1—366天。366天实际整壳计算/汇总/末日曲线已测试，但最长主线程任务仍超过1秒，年度性能未通过；巨型整期JSON/CSV导出及低内存设备未验收，建议先分批较短日期。没有擅自降低366天上限或放宽目标。
 
 分钟功率与预测表列名见README及本机说明；分钟表本身不能自动证明站点身份，必须由上传者确认同场站。其他场站的AGC控制规则也需符合当前规则，不能把数值归因当作调度责任独立证据。
 

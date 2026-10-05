@@ -1,12 +1,14 @@
 /** Actual T5 full shell: native file selection, real inline Worker, no API. */
 import assert from 'node:assert/strict';
 import {writeFileSync,mkdirSync,readFileSync,readdirSync} from 'node:fs';
-import {join} from 'node:path';
+import {join,resolve} from 'node:path';
 import {syntheticInput} from './performance-input.mjs';
 import {analyzeFiles} from '../../dashboard/src/content/calculation/analyze.mjs';
 import {compareResults} from './compare.mjs';
 import {launchProbe,ROOT} from './probe-browser.mjs';
-const folder=join(ROOT,'reports/browser-review/T5-source'),data=join(folder,'synthetic-inputs'),downloads=join(folder,`downloads-${Date.now()}`);
+const candidate=process.argv[2]?resolve(process.argv[2]):null;
+const stage=candidate?'RG3-ui':'T5-source';
+const folder=join(ROOT,`reports/browser-review/${stage}`),data=join(folder,'synthetic-inputs'),downloads=join(folder,`downloads-${Date.now()}`);
 mkdirSync(data,{recursive:true});mkdirSync(downloads,{recursive:true});mkdirSync(join(folder,'probe-build'),{recursive:true});
 const checks=[],record=(name,detail)=>{checks.push({name,passed:true,detail});console.log(`PASS ${name}`);};
 const stationA='T5-PRIVATE-SYNTHETIC-A-a19e',stationB='T5-PRIVATE-SYNTHETIC-B-b28f';
@@ -21,11 +23,13 @@ const bPaths=writeInput(b,'b'),expectedB=await analyzeFiles(b);
 const large=syntheticInput(31);large.options.stationName='T5-PRIVATE-SYNTHETIC-C-31days';const largePaths=writeInput(large,'c'),expectedLarge=await analyzeFiles(large);
 const zero=syntheticInput(1);zero.options.stationName='T5-PRIVATE-SYNTHETIC-ZERO';{const lines=new TextDecoder().decode(zero.power[0].bytes).trimEnd().split('\n');zero.power[0].bytes=new TextEncoder().encode(lines.map((line,i)=>{if(!i)return line;const cells=line.split(',');cells[2]='-0.1';return cells.join(',');}).join('\n')).buffer;}const zeroPaths=writeInput(zero,'zero');
 const badPath=join(data,'invalid-header.csv');writeFileSync(badPath,'时间,可用功率,实发功率,AGC有功设定值\n2026-09-01 00:00:00,20,10,15\n');
+if(!candidate){
 const html=readFileSync(join(folder,'dashboard/dist/index.html'),'utf8');
 assert.ok(!/<meta\b[^>]*\bname=["']data-app-local-thread["']/i.test(html));
 const bootstrap=`<script>window.probeReady=true;window.testRequests=[];window.testErrors=[];history.replaceState(null,'',location.pathname+'?t0-harness');const originalFetch=window.fetch;window.fetch=function(input,options){window.testRequests.push({url:String(input),method:options?.method??'GET',body:options?.body??null});return originalFetch.apply(this,arguments);};window.addEventListener('error',e=>window.testErrors.push(e.message));window.addEventListener('unhandledrejection',e=>window.testErrors.push(String(e.reason)));</script>`;
 writeFileSync(join(folder,'probe-build/index.html'),html.replace('</head>',bootstrap+'</head>'));
-const p=await launchProbe(null,'T5-source');
+}
+const p=await launchProbe(null,stage,candidate?{siteRoot:join(candidate,'site'),prefix:'',ready:'Boolean(window.__T0__ && document.querySelector(".wind-upload"))'}:{});
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(expression,timeout=20000){const start=Date.now();while(Date.now()-start<timeout){if(await p.evaluate(expression))return;await delay(40);}throw new Error(`UI wait failed: ${expression}\n${await p.evaluate('document.body.innerText.slice(0,2500)')}`);}
 async function clickText(text){await p.evaluate(`(()=>{const e=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!e)throw Error('button missing '+${JSON.stringify(text)});e.click();})()`);}
@@ -99,12 +103,12 @@ try{
  await upload(zeroPaths,zero.options);assert.equal((await state()).summary.included,0);assert.ok(await p.evaluate('document.querySelector(".wind-period").innerText.includes("没有有效计算分钟")'));assert.ok(await p.evaluate('document.querySelector(".wind-daily-table tbody").textContent.includes("—")'));for(const kind of ['dispatch','prediction','other'])assert.ok(await p.evaluate(`document.querySelector('[data-testid=total-${kind}]').textContent.includes('—')`));record('zero valid minutes explicitly means no effective result, not zero loss');
  await upload(bPaths,b.options);await setValue('select[aria-label="More"]','theme');await wait('Boolean(document.querySelector("select[aria-label=Appearance]"))');await setValue('select[aria-label="Appearance"]','light');await p.evaluate(`document.querySelector('button[aria-label="Close theme picker"]').click()`);assert.equal(await p.evaluate('document.documentElement.dataset.colorScheme'),'light');record('native theme menu restores light appearance');
  // Persistent storage may contain shell appearance/layout, never user input/result.
- const storage=await p.evaluate(`(()=>{const read=s=>Object.fromEntries(Object.keys(s).map(k=>[k,s.getItem(k)]));return {local:read(localStorage),session:read(sessionStorage)}})()`);const storageText=JSON.stringify(storage);assert.ok(!storageText.includes(stationA)&&!storageText.includes(stationB)&&!storageText.includes('a-synthetic-power.csv')&&!storageText.includes('b-synthetic-power.csv'));assert.ok(!storageText.includes('dispatchState')&&!storageText.includes('T5-PRIVATE-SYNTHETIC'));const databases=await p.evaluate('indexedDB.databases().then(xs=>xs.map(x=>x.name))');assert.deepEqual(databases,[]);assert.equal(await p.evaluate('navigator.serviceWorker.getRegistrations().then(xs=>xs.length)'),0);assert.ok(!JSON.stringify(await p.evaluate('window.testRequests')).includes(stationA));assert.ok(p.requests.every(r=>r.method==='GET'&&r.bytes===0));assert.ok(!p.requests.some(r=>r.path.includes('/api/health')||r.path.includes('/api/calculate')));record('no calculation/health API, user marker or raw/result data in shell storage');
+ const storage=await p.evaluate(`(()=>{const read=s=>Object.fromEntries(Object.keys(s).map(k=>[k,s.getItem(k)]));return {local:read(localStorage),session:read(sessionStorage)}})()`);const storageText=JSON.stringify(storage);assert.ok(!storageText.includes(stationA)&&!storageText.includes(stationB)&&!storageText.includes('a-synthetic-power.csv')&&!storageText.includes('b-synthetic-power.csv'));assert.ok(!storageText.includes('dispatchState')&&!storageText.includes('T5-PRIVATE-SYNTHETIC'));const databases=await p.evaluate('indexedDB.databases().then(xs=>xs.map(x=>x.name))');assert.deepEqual(databases,[]);assert.equal(await p.evaluate('navigator.serviceWorker.getRegistrations().then(xs=>xs.length)'),0);assert.ok(!JSON.stringify(candidate?p.networkRequests:await p.evaluate('window.testRequests')).includes(stationA));assert.ok(p.requests.every(r=>r.method==='GET'&&r.bytes===0));assert.ok(!p.requests.some(r=>r.path.includes('/api/health')||r.path.includes('/api/calculate')));record('no calculation/health API, user marker or raw/result data in shell storage');
  // Separate real page uses its own memory session, even with shared appearance.
  const {targetId}=await p.call('Target.createTarget',{url:await p.evaluate('location.href')});const {sessionId:second}=await p.call('Target.attachToTarget',{targetId,flatten:true});let secondName;for(let i=0;i<100;i++){const r=await p.call('Runtime.evaluate',{expression:'window.__T0__?.state()?.stationName',returnByValue:true},second);secondName=r.result.value;if(secondName)break;await delay(40);}assert.ok(secondName&&!secondName.includes(stationA)&&!secondName.includes(stationB));await p.call('Target.closeTarget',{targetId});record('second browser tab starts independently with example');
  await p.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true},p.sessionId);await delay(120);assert.ok(await p.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'));const shot=await p.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},p.sessionId);writeFileSync(join(folder,'narrow.png'),Buffer.from(shot.data,'base64'));await p.evaluate('document.querySelector(".wind-chart-card").scrollIntoView({block:"start"})');const chartShot=await p.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},p.sessionId);writeFileSync(join(folder,'narrow-chart.png'),Buffer.from(chartShot.data,'base64'));record('390px layout stays within viewport');
  await p.call('Emulation.clearDeviceMetricsOverride',{},p.sessionId);
- assert.deepEqual(await p.evaluate('window.testErrors'),[]);
+ assert.deepEqual(candidate?p.browserErrors:await p.evaluate('window.testErrors'),[]);
  writeFileSync(join(folder,'session-ui.json'),JSON.stringify({passed:true,browser:p.version,checks,requests:p.requests,storage,sourceText},null,2)+'\n');
  console.log(`T5 full-shell UI: ${checks.length} checks passed`);
 }catch(error){writeFileSync(join(folder,'session-ui-failure.json'),JSON.stringify({error:String(error),checks,body:await p.evaluate('document.body.innerText.slice(0,5000)'),requests:p.requests},null,2));throw error;}finally{await p.close();}

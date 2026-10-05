@@ -58,6 +58,10 @@ def copy_source(root,project,names):
 
 def synthetic_snapshot():
     snapshot=snapshot_for(create_demo(),ROOT/'templates/dashboard-snapshot.json')
+    # Provenance text is payload, not a categorical color dimension. Preserve
+    # this authored query metadata after the unchanged Python snapshot adapter.
+    template=json.loads((ROOT/'templates/dashboard-snapshot.json').read_text(encoding='utf-8'))
+    snapshot['queries']['wind_minutes']['payloadColumns']=template['queries']['wind_minutes'].get('payloadColumns',[])
     snapshot.update(id='wind-curtailment-static-candidate-v1',pagesDemo=True,calculationMode='browser',
                     title='风电限电量分析 · 合成示例',generatedAt='2026-01-03T00:00:00+08:00',buildStatus='complete')
     source=snapshot['queries']['wind_minutes']['source']

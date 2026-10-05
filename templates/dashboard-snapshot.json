@@ -8,6 +8,7 @@
   "queries": {
     "wind_minutes": {
       "rows": [],
+      "payloadColumns": ["powerSource", "forecastSource", "rightForecastSource", "note", "time"],
       "source": {
         "type": "file",
         "name": "等待用户上传",
