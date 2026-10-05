@@ -1,8 +1,9 @@
 import React,{useState,useMemo,useRef,useEffect} from 'react';
 import {DataComponent,SortableRegion,SortableItem,useDataApp} from '../../data-app-public.jsx';
-import {clock,filterRows,totals,bands,stepPath,hourly,csvText} from './wind-model.mjs';
+import {clock,filterRows,totals,bands,stepPath,hourly} from './wind-model.mjs';
 import './wind.css';
 import {UploadPanel,PeriodOverview,Exclusions} from './UploadPanel.jsx';
+import {exportAnalysis} from './analysis-exports.mjs';
 import {T0AnalysisHarness} from './analysis-session.jsx';
 
 const C={a:'var(--wind-available)',p:'var(--wind-actual)',g:'var(--wind-agc)',f:'var(--wind-forecast)',theory:'var(--wind-theory)',dispatch:'var(--wind-dispatch)',prediction:'var(--wind-prediction)',other:'var(--wind-other)',missing:'var(--wind-missing)'};
@@ -43,15 +44,18 @@ function Minute({row,onPrevious,onNext,range}){return <aside className="wind-min
 
 function HourChart({rows,onRange}){const bins=hourly(rows),max=Math.max(1,...bins.map(b=>b.gap));const[active,setActive]=useState(null);useEffect(()=>setActive(null),[rows]);return <><div className="wind-hour-chart"><div className="wind-hour-axis"><span>{fmt(max,1)} MWh</span><span>0</span></div><div className="wind-bars">{bins.map(b=><button key={b.hour} className="wind-hour" onMouseEnter={()=>setActive(b)} onFocus={()=>setActive(b)} onClick={()=>onRange([b.hour*60,(b.hour+1)*60])} aria-label={`${clock(b.hour*60)}，调度${fmt(b.dispatch)}，预测${fmt(b.prediction)}，待核实${fmt(b.other)} MWh，点击查看此小时`}><div className="wind-hour-stack">{['dispatch','prediction','other'].map(k=><span key={k} style={{height:`${b[k]/max*100}%`,background:C[k]}}/>)}</div><span className="wind-hour-label">{String(b.hour).padStart(2,'0')}</span></button>)}</div></div><div className="wind-hour-readout" aria-live="polite">{active?`${clock(active.hour*60)}—${clock((active.hour+1)*60)}　调度 ${fmt(active.dispatch)} · 预测 ${fmt(active.prediction)} · 待核实 ${fmt(active.other)} MWh`:'按所选范围内的分钟电量汇总；点击柱形放大到该小时。'}</div><div className="wind-small-legend">{['dispatch','prediction','other'].map(k=><span key={k}><i style={{background:C[k]}}/>{L[k]}</span>)}</div></>;}
 
-function DailyDashboard({all,meta,date}){
- const[range,setRange]=useState([0,1440]),[selected,setSelected]=useState(720),[unit,setUnit]=useState('MWh'),[visible,setVisible]=useState({a:true,p:true,g:true,f:true,theory:false}),[shades,setShades]=useState({dispatch:true,prediction:true,other:true,missing:true}),[capacity,setCapacity]=useState(false),[playing,setPlaying]=useState(false),[reduced,setReduced]=useState(false),[page,setPage]=useState(0);
+function DailyDashboard({all,meta,date,preferences,setPreferences}){
+ const[range,setRange]=useState([0,1440]),[selected,setSelected]=useState(720),[playing,setPlaying]=useState(false),[reduced,setReduced]=useState(false),[page,setPage]=useState(0);
+ const {unit,visible,shades,capacity}=preferences;
+ const setPreference=(key,value)=>setPreferences(p=>({...p,[key]:typeof value==='function'?value(p[key]):value}));
+ const setUnit=v=>setPreference('unit',v),setVisible=v=>setPreference('visible',v),setShades=v=>setPreference('shades',v),setCapacity=v=>setPreference('capacity',v);
  const scoped=useMemo(()=>filterRows(all,range),[all,range]),sum=useMemo(()=>totals(scoped),[scoped]),row=all.find(r=>r.minute===selected)||scoped[0];
  function updateRange(next){setRange(next);setSelected(m=>Math.max(next[0],Math.min(next[1]-1,m)));setPage(0);setPlaying(false);}
  useEffect(()=>{const media=window.matchMedia('(prefers-reduced-motion: reduce)');const change=()=>{setReduced(media.matches);if(media.matches)setPlaying(false);};change();media.addEventListener('change',change);const hide=()=>{if(document.hidden)setPlaying(false);};document.addEventListener('visibilitychange',hide);return()=>{media.removeEventListener('change',change);document.removeEventListener('visibilitychange',hide);};},[]);
  useEffect(()=>{if(!playing)return;const timer=setInterval(()=>setSelected(m=>Math.min(range[1]-1,m+5)),160);return()=>clearInterval(timer);},[playing,range]);
  useEffect(()=>{if(selected>=range[1]-1)setPlaying(false);},[selected,range]);
  const value=v=>fmt(unit==='MWh'?v:v/10);
- function download(){const url=URL.createObjectURL(new Blob([csvText(scoped)],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`${meta.stationName}-${date}-${clock(range[0]).replace(':','')}-${clock(range[1]).replace(':','')}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ function download(){const exported=exportAnalysis({meta:{...meta,start:date,end:date},rows:scoped},'minutes');const url=URL.createObjectURL(new Blob([exported.text],{type:exported.type}));const a=document.createElement('a');a.href=url;a.download=exported.name.replace('分钟分解',`${clock(range[0]).replace(':','')}-${clock(range[1]).replace(':','')}-分钟分解`);a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  const preset=(text,next)=><button key={text} className={range[0]===next[0]&&range[1]===next[1]?'active':''} onClick={()=>updateRange(next)}>{text}</button>;
  return <article className="wind-app">
  <div className="wind-context"><div className="wind-station"><span className="wind-station-icon"><Icon name="wind" size={26}/></span><div><strong>{meta.stationName}</strong><span>{meta.capacity} MW 装机容量 · MW · {meta.timezone}</span></div></div><div className="wind-meta"><span className="wind-date">{date}</span><span className="wind-badge">线性插值 · 规则估算</span><button onClick={download}><Icon name="download"/>导出当前范围</button></div></div>
@@ -65,12 +69,12 @@ function DailyDashboard({all,meta,date}){
  <div className="wind-chart-grid"><div className="wind-chart-main"><PowerChart rows={scoped} range={range} selected={selected} onSelect={m=>{setSelected(m);setPlaying(false);}} onRange={updateRange} visible={visible} shades={shades} capacity={capacity?meta.capacity:0}/><div className="wind-area-legend">{['dispatch','prediction','other'].map(k=><button key={k} aria-pressed={shades[k]} className={shades[k]?'':'off'} onClick={()=>setShades(v=>({...v,[k]:!v[k]}))}><span style={{background:C[k]}}/>{L[k]}面积</button>)}<span>面积 = 功率差 × 时间</span></div></div><Minute row={row} range={range} onPrevious={()=>{setSelected(m=>Math.max(range[0],m-1));setPlaying(false);}} onNext={()=>{setSelected(m=>Math.min(range[1]-1,m+1));setPlaying(false);}}/></div>
  <div className="wind-range-controls"><label>起点 <b>{clock(range[0])}</b><input aria-label="范围起点" type="range" min="0" max="1425" step="1" value={range[0]} onChange={e=>updateRange([Math.min(Number(e.target.value),range[1]-15),range[1]])}/></label><label>终点 <b>{clock(range[1])}</b><input aria-label="范围终点" type="range" min="15" max="1440" step="1" value={range[1]} onChange={e=>updateRange([range[0],Math.max(Number(e.target.value),range[0]+15)])}/></label><span>拖选图表放大 · 方向键逐分钟查看</span></div>
  </DataComponent>
- <div className="wind-secondary-grid"><DataComponent id="wind-hours" title="限电量的小时分布" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={hourly(scoped)} variant="card"><HourChart rows={scoped} onRange={updateRange}/></DataComponent><DataComponent id="wind-pending" title="其他差额细分（不计入两类限电）" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={scoped} variant="card"><div className="wind-pending-total"><b>{value(sum.other)}</b><span>{unit}</span></div>{[
+ <div className="wind-secondary-grid"><DataComponent id="wind-hours" title="限电量的小时分布" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={hourly(scoped)} variant="card"><HourChart rows={scoped} onRange={updateRange}/></DataComponent><DataComponent id="wind-pending" title="其他差额细分（不计入两类限电）" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={scoped} variant="card"><div className="wind-pending-total"><b>{sum.matched?value(sum.other):'—'}</b><span>{unit}</span></div>{[
  ['operationalBelow','场站指令以下未发','低于 min(可用,AGC)，差额超过容量的 0.5%。'],
  ['unexplainedAbove','指令以上原因未明','AGC 明显高于预测且不符合 2% 下限跟随，原因仍待查。'],
  ['noiseAbove','指令以上阈值内差额','预测未发空间未满足进入 / 保持阈值。'],
  ['noiseBelow','指令以下小偏差','未超过容量的 0.5%，保留原始差额供复核。']
- ].map(([k,title,desc])=><div className="wind-split-item" key={k}><span>{title}</span><b>{value(sum[k])} <small>{unit}</small></b><p>{desc}</p></div>)}</DataComponent></div>
+ ].map(([k,title,desc])=><div className="wind-split-item" key={k}><span>{title}</span><b>{sum.matched?value(sum[k]):'—'} <small>{unit}</small></b><p>{desc}</p></div>)}</DataComponent></div>
  <details className="wind-method"><summary>计算口径与数据质量<span>匹配规则、阴影边界、{sum.anomalies} 分钟基准异常</span></summary><div className="wind-method-grid"><section><h3>第二点目标时刻生效</h3><p>23:45 上传 → 00:00 版本 → 第二点 00:15 生效。相邻文件第二点按目标时刻线性插值到每分钟：F(t)=F₀+(F₁−F₀)×(t−t₀)/15分钟。不外推、不跨缺失版本插值，每条实测值代表该分钟。缺失及负实发时段整分钟排除，缺失不补零。插值值是分析基准，不等同于实际AGC下发值。</p><p>调度状态进入：F−G 大于容量的 1%；保持直到 F−G 不超过 0.5%。非调度状态下，以 max(F,2%装机容量) 为跟随基准，与 AGC 相差不超过 1% 视为跟随；低预测时识别 AGC 下限，不更改原曲线。预测低估空间 A−max(F,G) 超过 2% 时进入，降至 1% 以内退出。阈值只用于判断状态，不从已确认损失中扣减。</p></section><section><h3>阈值与连续状态</h3><p>当前范围 AGC 明显高于预测且未确认跟随 {sum.special} 分钟，实发高于可用 {sum.anomalies} 分钟；负差额不抵扣其他时段。</p><p>阈值为本次分析参数，并非调度控制器实测死区；结果仍为内部估算。跨日保持状态，排除分钟重置状态。跟随时将 max(AGC,实发) 以上的有效未发空间计入预测限电，避免重复计量已经发出的电。隐藏曲线或阴影不改变汇总。</p></section></div></details>
  <details className="wind-detail-table"><summary>逐分钟数据<span>查看当前范围的输入功率与分类电量</span></summary><DataComponent id="wind-records" title="分钟明细" queryId="wind_minutes" kind="table" sourceRows={scoped} displayRows={scoped} variant="plain"><div className="wind-table-scroll"><table><thead><tr>{['时刻','可用 MW','实发 MW','AGC MW','预测 MW','调度 MWh','预测 MWh','待核实 MWh'].map(s=><th key={s}>{s}</th>)}</tr></thead><tbody>{scoped.slice(page*20,page*20+20).map(r=><tr key={r.minute}><td>{r.time}</td>{['a','p','g','f','dispatch','prediction','other'].map(k=><td key={k}>{fmt(r[k],['dispatch','prediction','other'].includes(k)?5:3)}</td>)}</tr>)}</tbody></table></div><div className="wind-pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(scoped.length/20))} 页</span><button disabled={(page+1)*20>=scoped.length} onClick={()=>setPage(p=>p+1)}>下一页</button></div></DataComponent></details>
  </article>;
@@ -81,7 +85,11 @@ export function DashboardContent(){
  const {snapshot}=useDataApp();
  const all=snapshot.queries.wind_minutes.rows;
  const report=snapshot.wind;
- const [selectedDate,setDate]=useState('');
+ const revision=report?.revision??report?.meta;
+ const [selection,setSelection]=useState({revision:null,date:''});
+ const [preferences,setPreferences]=useState({unit:'MWh',visible:{a:true,p:true,g:true,f:true,theory:false},shades:{dispatch:true,prediction:true,other:true,missing:true},capacity:false});
+ const selectedDate=selection.revision===revision?selection.date:'';
+ const setDate=date=>setSelection({revision,date});
  // The selected day belongs to the analysis, not to the page: a new commit
  // replaces the analysis and must reset the day view instead of keeping a date
  // that no longer exists. Deriving it keeps the day selector working unchanged.
@@ -91,12 +99,13 @@ export function DashboardContent(){
  const ready=Boolean(report&&all.length);
  return <div className="wind-app">
   <T0AnalysisHarness/>
+  {(snapshot.pagesDemo===true||report?.origin==='browser')&&<p className="wind-sample-label" data-testid="analysis-origin">{report?.origin==='browser'?'本地用户分析 · 仅在当前标签页内保留，刷新后需重新导入。':'合成示例 · 全部为生成的示例数据，选择自己的文件后计算场站结果。'}</p>}
   <UploadPanel hasResults={ready}/>
   {ready?<>
    <PeriodOverview report={report} rows={all} date={date} onDate={setDate}/>
    <div className="wind-day-selector"><label>查看日期 <select value={date} onChange={e=>setDate(e.target.value)}>{report.daily.map(d=><option key={d.date}>{d.date}</option>)}</select></label><span>下方指标与曲线随日期和图表范围联动；上方为整期汇总。</span></div>
-   {day.length>0&&<DailyDashboard key={date} all={day} meta={report.meta} date={date}/>}
-   <Exclusions gaps={report.gaps} excluded={report.summary.excluded} onDate={setDate}/>
+   {day.length>0&&<DailyDashboard key={`${report.revision??report.meta.start}-${date}`} all={day} meta={report.meta} date={date} preferences={preferences} setPreferences={setPreferences}/>}
+   <Exclusions gaps={report.gaps} excluded={report.summary.excluded} onDate={setDate} report={report} rows={all}/>
   </>:<section className="wind-empty"><h2>上传数据，开始一次场站分析</h2><p>选择一分钟功率表与对应的“数据下载”预测表，即可生成两类限电量、逐日统计与分钟曲线。</p><p>每次分析一个场站。计算沿用第二点目标时刻与线性插值规则，缺失区间会自动排除并列明。</p></section>}
  </div>;
 }

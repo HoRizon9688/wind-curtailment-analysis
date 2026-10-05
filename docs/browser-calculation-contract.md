@@ -111,3 +111,11 @@ node tests/browser/audit-table-oracle.mjs reports/browser-review/T1/table-audit.
 T2 必须先修复原始 Excel 日期序列转换，支持 1900/1904 日期系统，并增加真实非零秒/毫秒仍被拒绝的反例。不能在最终 Date 上统一取整到分钟，不能靠统一加一天修补，更不能只允许这几个文件例外。库没有公开日期解析回调，具体适配方式需在 T2 实现时审查；禁止直接修改 node_modules。T3 可以先执行独立的分类/汇总迁移；在日期审计通过前，T2 不算完成，G1 全流程对照不能放行。
 
 该审计也比较 numbers.json：现有 numberOrNull 的正则未接受正号、下划线、Unicode 十进制数字。T2 数值标准化必须对上 Python，不使用为绕过测试而设的文件/值白名单。这项和日期问题都属于读取兼容性，不能通过修改限电公式解决。
+
+## T5 展示会话（不改变六字段 Result）
+
+默认静态上传模式读取 File.arrayBuffer 并交给同一 Worker 核心，不发送 health/calculate 请求。表单草稿与已成功分析分离；失败、取消、晚到读取/消息均不能提交。重试重新读取 File。完整 Result 的 calibration 保留在内存与 JSON，网页不添加校核面板。
+
+提交适配仅对既有 wind_minutes query 和已注册 wind namespace 操作；rows/source/methods 与 meta/summary/daily/gaps/calibration 同次更新。DataAppShell 的可选 methods 必须是 language/code 对象数组，非法值在状态更新前拒绝；省略时兼容原调用。hosted publication 拒绝、query/namespace 校验及身份权限边界不变。该限定修改由官方 authorize-protected-change 对 src/DataAppShell.jsx 重签，非通用快照 setter。
+
+wind.origin/revision 为展示 namespace 元数据，不加入核心 Result/完整 JSON。新分析重置日期、范围、分页和回放，保留用户显隐、单位、容量线与壳层主题偏好。0有效分钟显示无有效结果及“—”；排除区间不补零。CSV文本做公式保护，完整 JSON 保留原字段，不持久化用户文件或分析。

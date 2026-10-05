@@ -1054,11 +1054,11 @@ export function DataAppShell({
   // Authored content may replace the current analysis in memory on a static
   // build, where the shell has no query store and no publication endpoint to
   // write through. The patch is deliberately narrow: one *existing* reviewed
-  // query's rows and source metadata, plus the authored analysis object. App
+  // query's rows, source metadata and optional recorded methods, plus the authored analysis object. App
   // identity, surface, filters, permissions and the query map itself stay owned
   // by the shell, so this is not a general snapshot setter.
   const commitAnalysis = useCallback(
-    ({ queryId, rows, source, namespace, analysis } = {}) => {
+    ({ queryId, rows, source, methods, namespace, analysis } = {}) => {
       if (hosted) {
         throw new Error("A hosted Data app publication owns its data; in-memory analysis commit is only available on a static build.");
       }
@@ -1070,6 +1070,10 @@ export function DataAppShell({
       }
       if (source !== undefined && (source === null || typeof source !== "object" || Array.isArray(source))) {
         throw new Error("An in-memory analysis commit source metadata must be an object.");
+      }
+      if (methods !== undefined && (!Array.isArray(methods) || methods.some(method =>
+        !method || typeof method !== "object" || typeof method.language !== "string" || typeof method.code !== "string"))) {
+        throw new Error("An in-memory analysis commit methods must be recorded language/code objects.");
       }
       // Validate every supplied namespace, including a row-only commit. A
       // payload may omit the analysis, but cannot register arbitrary fields.
@@ -1087,7 +1091,7 @@ export function DataAppShell({
         ...current,
         queries: {
           ...current.queries,
-          [queryId]: { ...current.queries[queryId], rows, ...(source === undefined ? {} : { source }) },
+          [queryId]: { ...current.queries[queryId], rows, ...(source === undefined ? {} : { source }), ...(methods === undefined ? {} : { methods }) },
         },
         ...(analysis === undefined ? {} : { [namespace]: analysis }),
       }));

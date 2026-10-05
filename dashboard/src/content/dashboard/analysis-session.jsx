@@ -11,10 +11,12 @@
  * shell owns its data and refuses the commit, so this module must not be used
  * as a publication write path.
  */
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useDataApp } from "../../data-app-public.jsx";
 import { readTable } from "../calculation/table-reader.mjs";
+import {createCalculationClient} from '../calculation/calculation-browser.mjs';
+import {createAnalysisSession,analysisCommitPayload} from './analysis-session-model.mjs';
 
 /** Reviewed query that carries the per-minute analysis rows. */
 export const ANALYSIS_QUERY_ID = "wind_minutes";
@@ -30,9 +32,14 @@ export const ANALYSIS_NAMESPACE = "wind";
  * of rendering as a half-updated analysis.
  */
 export function useAnalysisCommit() {
-  const { commitAnalysis } = useDataApp();
+  const { commitAnalysis,setFilter,snapshot } = useDataApp();
   return useCallback(
-    (analysis) => {
+    (analysis,revision) => {
+      if(analysis?.calibration){
+        commitAnalysis(analysisCommitPayload(analysis,revision));
+        for(const filter of snapshot.filters??[])setFilter(filter.id,filter.defaultValue??'all');
+        return;
+      }
       if (!analysis || typeof analysis !== "object") {
         throw new Error("一次分析提交需要完整结果对象。");
       }
@@ -51,8 +58,20 @@ export function useAnalysisCommit() {
         analysis: { meta, summary, daily, gaps },
       });
     },
-    [commitAnalysis],
+    [commitAnalysis,setFilter,snapshot.filters],
   );
+}
+
+export function useBrowserAnalysis() {
+ const commit=useAnalysisCommit(),commitRef=useRef(commit),sessionRef=useRef(null);
+ commitRef.current=commit;
+ const [state,setState]=useState({status:'idle',progress:null,error:null});
+ useEffect(()=>{
+  const session=createAnalysisSession({createClient:createCalculationClient,commit:(r,id)=>commitRef.current(r,id),onState:setState});
+  sessionRef.current=session;
+  return()=>{session.dispose();if(sessionRef.current===session)sessionRef.current=null;};
+ },[]);
+ return {state,start:input=>sessionRef.current?.start(input),cancel:()=>sessionRef.current?.cancel()};
 }
 
 /** Fraction of the repository root the static fixtures live under. */
@@ -134,9 +153,13 @@ export function T0AnalysisHarness() {
           lastTimestamp: rows.at(-1)?.timestamp ?? null,
           rowDispatchTotal: rows.reduce((sum, row) => sum + (row.dispatch ?? 0), 0),
           sourceName: queries.wind_minutes?.source?.name ?? null,
+          methods: queries.wind_minutes?.methods ?? [],
           sourcePeriod: queries.wind_minutes?.source?.period ?? null,
           guard: typeof shell.commitAnalysis === "function",
         };
+      },
+      commitInvalidMethods(methods) {
+        return shell.commitAnalysis({queryId: ANALYSIS_QUERY_ID,rows:[],methods});
       },
       /** Commits a fixture by file name. */
       async apply(name) {

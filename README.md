@@ -1,10 +1,12 @@
 # 风电场限电量分析 · v0.2.0
 
+`codex/browser-calculation` 分支的 T5 网页已默认在浏览器内计算，不需要 Python 计算接口。已发布的 GitHub Pages 仍是旧静态演示，T6 候选构建与发布尚未执行。
+
 本机网页支持上传一分钟功率表和“数据下载”超短期预测表，完成校验、插值、限电分解和图表展示。支持不同场站分批导入及连续多日期分析。结果为内部规则估算，不等同于调度责任或结算认定。
 
-## GitHub Pages 在线演示
+## GitHub Pages 已发布的旧演示
 
-[打开静态演示](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。在线版使用独立生成的两天合成数据，不包含任何实际场站数据，可操作曲线、阴影、日期和明细导出。GitHub Pages不运行Python，所以在线版不提供文件上传计算；自己的数据请按下文在本机运行。
+[打开静态演示](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。在线版使用独立生成的两天合成数据，不包含任何实际场站数据，可操作曲线、阴影、日期和明细导出。GitHub Pages不运行Python，所以在线版不提供文件上传计算；自己的数据请按下文在本机运行当前 T5 源码。不要将下述旧演示更新命令当成 T5/T6 发布流程；新版本发布须先完成 T6 候选审核。
 
 发布来源设置：仓库 **Settings → Pages → Deploy from a branch → main → /docs**。`docs/.nojekyll`使GitHub直接发布生成文件，无需自定义Actions工作流。
 
@@ -47,7 +49,7 @@ git push origin main
    | Python interpreter | 上一步配置的解释器 |
 
 4. 点击 Run。程序先构建网页，再启动本机服务，并打开 `http://127.0.0.1:4180/?view=1&tab=dashboard`。
-5. 在网页选择分钟功率表和预测表，核对容量/日期，点击“校验并计算”。保持 Run 进程运行；停止后上传接口不可用。
+5. 在网页选择分钟功率表和预测表，核对容量/日期，勾选容量与同场站确认，点击“校验并计算”。保持 Run 进程运行以提供页面；本机服务仅负责提供页面；计算在当前标签页内完成，失败或取消保留原分析。刷新后需重新选择文件。
 
 PyCharm Terminal 中也可直接执行：
 
@@ -68,7 +70,7 @@ WIND_NODE=C:/Users/HoRizon/.cache/codex-runtimes/codex-primary-runtime/dependenc
 WIND_DATA_APP_SCRIPT=C:/Users/HoRizon/.codex/plugins/cache/openai-curated-remote/data-analytics/1.0.11/scripts/data-app.mjs
 ```
 
-按实际安装路径/插件版本调整。日常不要求`npm install`或`npm run dev`。直接打开静态HTML、旧4173预览或仅启动Vite不能代替上传计算服务。
+按实际安装路径/插件版本调整。日常不要求`npm install`或`npm run dev`。旧4173预览可能是过期构建，请使用重新构建后的4180地址。新的浏览器计算不依赖上传接口；静态候选包及其完整启动说明将在T6提供。
 
 ## 输入与时间对应
 
@@ -105,7 +107,7 @@ C=装机容量，A=可用，F=插值预测第二点，G=实际AGC，P=实发，`
 
 首次计算D/Q未进入；按时间顺序更新，跨日保持，排除分钟重置。进入与退出门槛之间按此前状态判断，减少频繁切换；截取期间单独计算时，起点附近状态可能不同于完整期间。
 
-阈值只决定是否归因，**不从已确认分项再扣减一个阈值**。这是本项目分析参数，不是实测控制器死区；当前在`threshold_allocation.py`定义，网页未提供自由调参入口。
+阈值只决定是否归因，**不从已确认分项再扣减一个阈值**。这是本项目分析参数，不是实测控制器死区；Python 基线在`threshold_allocation.py`定义，浏览器等价实现为`dashboard/src/content/calculation/threshold-allocator.mjs`；网页未提供自由调参入口。
 
 ### 分解公式
 
@@ -145,7 +147,7 @@ T = Dloss + Floss + 指令以上阈值内差额
     + 指令以上原因未明 + 实际已发出的超AGC部分
 ```
 
-校核位于本地`result.json`的`calibration`字段。不能为凑齐T而忽略已发电量或强行归因；算术闭合不证明调度原因已独立验证。
+校核位于完整导出 JSON 的`calibration`字段（Python 旧模式也输出本地`result.json`）。不能为凑齐T而忽略已发电量或强行归因；算术闭合不证明调度原因已独立验证。
 
 ## 排除与覆盖率
 
@@ -161,20 +163,25 @@ T = Dloss + Floss + 指令以上阈值内差额
 |---|---|
 | 前端 | React 19、JavaScript/JSX、CSS；主要曲线与阴影为自定义SVG，React管理交互与状态 |
 | 页面运行时/构建 | Codex Data App提供主题、来源检查和页面容器；当前本机启动用Node调用Data插件的 `--source` 源构建，需要先安装锁定依赖 |
-| 后端 | Python标准库`ThreadingHTTPServer`/`SimpleHTTPRequestHandler`，不是Flask/Django；仅监听127.0.0.1 |
-| 数据计算 | openpyxl读Excel，csv读CSV；upload_pipeline.py负责校验与插值，threshold_allocation.py负责有状态归因 |
-| 通信/存储 | Fetch向`POST /api/calculate`提交JSON+Base64；本地CSV/JSON，无数据库 |
+| 本机页面服务及旧后端 | Python标准库`ThreadingHTTPServer`/`SimpleHTTPRequestHandler`，不是Flask/Django；仅监听127.0.0.1 |
+| 默认数据计算 | 浏览器 ESM + Web Worker；锁定 read-excel-file/fflate 读取表格，同一 JS 核心完成校验、插值和有状态归因 |
+| Python 基线/旧模式 | openpyxl/csv、upload_pipeline.py、threshold_allocation.py；保留 CLI 和本机 API 作为旧流程及对照 |
+| 默认通信/存储 | File.arrayBuffer → Worker transfer → 完整成功后更新内存分析；没有 health/calculate API 请求，不自动保存文件或结果 |
 | 测试 | Python unittest、Node内置test runner；合成数据不依赖私人快照 |
 
-流程：选择文件 → 本机接口解码 → 校验、插值与逐分钟归因 → 写快照并构建 → 浏览器刷新。支持一次一个计算任务；属于单用户本机工具，静态Sites托管不能单独运行Python接口。
+默认流程：选择文件并确认容量 → 浏览器读取原始字节 → Worker 校验、插值与逐分钟归因 → 完整结果替换当前分析 → 用户主动导出。计算有真实分阶段进度，可取消及重新选择文件重试。原成功分析在失败/取消期间保持不变。
+
+旧 Python API 与 CLI 保留；只有初始快照明确设 `calculationMode: "python"` 时上传表单才走旧 API。受 Data 平台管理的 hosted publication 不允许本地分析替换，不能冒充已支持平台托管计算；本次验收的是静态页面模式。
 
 ## 输出与测试
 
-最近结果在`reports/latest/`：result.json、minutes.csv、daily.csv、excluded-intervals.csv。网页快照为`dashboard/src/data.json`，构建产物为`dashboard/dist/`。再次成功计算替换最近结果，需要留档时先导出或复制。
+浏览器模式的文件与结果仅留在当前标签页内存，不写`reports/latest/`或`dashboard/src/data.json`。可主动下载整期分钟明细、逐日汇总、排除区间、含 calibration 的完整 JSON，以及当前日图表范围；导出标识来自已计算参数，CSV 做文本公式保护。刷新、关闭或另开标签页需重新导入。
+
+Python 旧模式/CLI 的磁盘结果仍在`reports/latest/`或指定 output：result.json、minutes.csv、daily.csv、excluded-intervals.csv；`--dashboard`才更新快照。构建产物为`dashboard/dist/`。
 
 ```powershell
 python -m unittest discover -s tests
-node --test tests/dashboard.test.mjs tests/upload-model.test.mjs
+node --test --test-concurrency=1 tests/dashboard.test.mjs tests/upload-model.test.mjs tests/browser/*.test.mjs
 ```
 
 原始数据、案例材料、真实快照、报告、凭据和IDE配置不上传Git。首次克隆缺少快照时，服务从空模板初始化上传页面。
@@ -183,6 +190,8 @@ node --test tests/dashboard.test.mjs tests/upload-model.test.mjs
 
 ## 浏览器计算迁移进度
 
-`codex/browser-calculation` 分支已完成 T0-R2、T1、T2、T3 和 T4，G1 计算对照通过。已实现浏览器文件读取、时间匹配、预测分钟插值、阈值状态分类、完整结果汇总，以及 Worker 进度、取消、旧任务隔离与大结果分批传回。详见 [T1 契约](docs/browser-calculation-contract.md)、[T2/T3 审核](planning/T2-T3-report-2026-10-05.md) 和 [T4 验收及性能](planning/T4-report-2026-10-05.md)。
+`codex/browser-calculation` 已完成 T0-R2、T1—T5，G1 核心对照与 G2 网页验收通过。T5 完成真实上传、Worker 接入、成功分析原子更新、来源及导出；保留主题与显隐偏好，重置日期、范围、分页和回放。公式、冻结样例和容差未改。
 
-T1 发现的 Excel 日期截断及数字字符串差异已修复；Python 公式、冻结样例和容差保持不变。浏览器核心已通过 Chrome 四时区和完整 Worker 结果核验；15/31/366 天性能及取消已实测。尚未接入上传页面，本机网页仍通过 Python 计算；下一步是 T5 页面上传、结果更新、来源及导出接入。当前网页启动方式保持不变。
+T5 验收：Python 62/62、Node 102/102、保护验证234文件、Chrome真实整页25项。31天44,640分钟从表单读取到结果呈现约1.90秒；这是本机合成输入实测，不是性能保证。15/31/366天核心性能见T4；366天完整业务UI、真实八月私有对照和其他浏览器/低内存设备尚未在T5验证。
+
+详见 [契约](docs/browser-calculation-contract.md)、[T2/T3](planning/T2-T3-report-2026-10-05.md)、[T4](planning/T4-report-2026-10-05.md)、[T5](planning/T5-report-2026-10-05.md)。下一步为T6静态候选构建、发布说明及G3审核；本轮未更新线上站点。
