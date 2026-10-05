@@ -1,10 +1,10 @@
 # T6 静态候选：本机查看、构建和后续上线
 
-当前源码在 `codex/browser-calculation`，T6交付只生成本机候选，不更新GitHub Pages、不部署Cloudflare。旧演示与 `docs/index.html` 保持不变。浏览器计算已覆盖完整上传/校验/插值/分类/图表/导出；Python旧模式仍保留用于本机CLI与独立对照。
+本文保留T6候选构建流程。用户于2026-10-05随后授权更新README、GitHub Pages并上线Cloudflare，当前发布资产为RG3-approved-2026-10-05-final，公开运行方式和部署命令以 [README](../README.md) 与 [部署说明](../deployment/README.md) 为准。浏览器计算已覆盖完整上传/校验/插值/分类/图表/导出；Python旧模式仍保留用于本机CLI与独立对照。
 
 ## 查看候选，无需计算后端
 
-原T6候选路径及SHA见 `planning/T6-report-2026-10-05.md`。当前候选见 `planning/RG3-fix-report-2026-10-05.md`：小时柱形再次点击恢复全天；真实八月数值、完整界面及年度响应目标通过，R/G3本机验收通过；线上发布和上线验收仍暂缓。旧失败记录保留。候选在被Git忽略的 `reports/static-candidates/`。审核ZIP含site、使用说明及清单，**不是直接部署的根目录ZIP**；部署时只选 `site/` 目录内容。
+原T6候选路径及SHA见 `planning/T6-report-2026-10-05.md`。当前候选见 `planning/RG3-fix-report-2026-10-05.md`：小时柱形再次点击恢复全天；真实八月数值、完整界面及年度响应目标通过，R/G3本机验收通过；线上发布已另获用户授权，具体上线检查以本次发布记录为准。旧失败记录保留。候选在被Git忽略的 `reports/static-candidates/`。审核ZIP含site、使用说明及清单，**不是直接部署的根目录ZIP**；部署时只选 `site/` 目录内容。
 
 以报告中的候选目录为例，在项目终端运行：
 
@@ -18,7 +18,7 @@ python -m http.server 4190 --bind 127.0.0.1 --directory reports/static-candidate
 
 文件在当前标签页通过File.arrayBuffer交给Web Worker处理，成功后一次性更新分析。失败/取消保留原分析；刷新、关闭或另开标签页从初始示例开始，需要重新导入。结果不会自动写磁盘，请主动导出整期分钟、逐日汇总、排除区间或完整JSON（含calibration）；当前日图表范围也可下载。主题等展示偏好可由壳层保留，用户文件和计算结果不自动保存。
 
-支持标准首行列名的CSV（UTF-8/BOM/GB18030）、XLSX、实际OOXML格式的XLS；旧二进制XLS应另存XLSX。UTC+08、MW、一分钟功率数据；预测第二点按版本+15分钟映射并线性插值，缺失不补零。每类400文件、总计60,000,000字节、工作簿解压150MB、1—366天。366天实际整壳计算/汇总/末日曲线及1秒主线程目标已在本机Chrome154验证；巨型整期JSON/CSV导出及低内存设备未验收，建议先分批较短日期。没有降低366天上限或放宽目标。时间与内存测量见修复报告，不保证所有设备同等速度。
+支持标准首行列名的CSV（UTF-8/BOM/GB18030）、XLSX、实际OOXML格式的XLS；旧二进制XLS应另存XLSX。UTC+08、MW、一分钟功率数据；预测第二点按版本+15分钟映射并线性插值，缺失不补零。每类400文件、总计60,000,000字节、工作簿解压150MB、1—366天。366天实际整壳计算/汇总/末日曲线及1秒主线程目标已在本机Chrome154验证；巨型整期JSON/CSV导出及低内存设备按用户要求暂不纳入验收，可按较短日期分批使用。没有降低366天上限或放宽目标。时间与内存测量见修复报告，不保证所有设备同等速度。
 
 分钟功率与预测表列名见README及本机说明；分钟表本身不能自动证明站点身份，必须由上传者确认同场站。其他场站的AGC控制规则也需符合当前规则，不能把数值归因当作调度责任独立证据。
 
@@ -50,7 +50,9 @@ python build_static_candidate.py --verify reports/static-candidates/T6-new
 
 候选只允许四个交付文件（site/index.html、两份合成CSV和USAGE.md）以及候选清单与审核ZIP；site为单文件程序，解析依赖和Worker已内联。`candidate-manifest.json`记录每个文件大小/SHA、合成快照SHA、Git起点、实际源码/构建器/生成器SHA与锁定依赖。verify核对文件白名单、大小、哈希、快照身份和ZIP/散文件一致；不把哈希等同于数字签名。构建日志位于reports/browser-review/T6。
 
-## 后续Cloudflare免费方案的部署选择（尚未执行）
+## Cloudflare部署选择记录
+
+当前采用Workers Static Assets部署，仅上传候选site目录；不启用服务端计算或数据资源。静态请求与资产存储免费，见 [官方计费](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)。下文为先前Pages方案评估，不是本次实际部署方式。
 
 本项目计算已移到浏览器，静态托管即可提供完整当前分析功能；不用为了上传计算部署Python后端、Functions、数据库或文件存储。后续可选择Cloudflare Pages静态站点方案，先在本机审核通过，再交付预构建的 `site/` 内容。当前HTML约5.69MB，低于官方Pages单资源25MiB上限；全站仅3个站点文件，也低于免费计划20,000文件上限。免费额度与产品入口可能变化，正式上线时再核对账号及官方规则。[Pages限制](https://developers.cloudflare.com/pages/platform/limits/)
 
@@ -62,4 +64,4 @@ Pages支持上传本机预构建资产，适合目前依赖本机Data构建器�
 
 旧已公开合成演示基线 `26fd0e7ff436f92327063140f5352cd9b6466327` 与Git历史保留。T6还从Git blobs恢复并按原data-app-build.json验证HTML/快照，保存 `reports/static-candidates/rollback-26fd0e7/site/` 及回退ZIP/receipt；详见交付报告。
 
-后续已上线版本若需回退，重新部署经哈希校验的旧site内容或使用托管平台的既有回退入口，再做线上合成验收；不reset硬覆盖工作区、不强制推送历史。旧演示只能展示合成数据，不能冒充浏览器上传功能仍正常。GitHub Pages本次没有变化，因此无需对它回退。
+后续已上线版本若需回退，重新部署经哈希校验的旧site内容或使用托管平台的既有回退入口，再做线上合成验收；不reset硬覆盖工作区、不强制推送历史。旧演示只能展示合成数据，不能冒充浏览器上传功能仍正常。GitHub Pages新版按main/docs发布；若需回退，应恢复经校验的历史公开站点资产并正常提交推送，再复查线上行为。

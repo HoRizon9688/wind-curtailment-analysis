@@ -22,3 +22,6 @@ tests/fixtures/browser/contract/inputs/*.xls binary
 tests/fixtures/browser/contract/inputs/*.xlsx binary
 tests/fixtures/browser/contract/expected/*.json.gz binary
 tests/fixtures/browser/reused-handoff/*.csv binary
+# Public release assets must match the reviewed candidate byte-for-byte.
+docs/index.html -text
+docs/samples/*.csv binary

@@ -1,0 +1,22 @@
+{
+  "format": "wind-static-public-release-v1",
+  "sourceRevision": "1a8feb40770e873ee31497aa511b29044f49b0e7",
+  "synthetic": true,
+  "files": [
+    {
+      "path": "index.html",
+      "bytes": 5691179,
+      "sha256": "ad17516116aa0ef0de427a40564c162de5f4dcdb3ed577f4f5cc3366563b099a"
+    },
+    {
+      "path": "samples/forecast.csv",
+      "bytes": 14839,
+      "sha256": "bc0567af260f2b9b41763a99377399d8258f5f744f77ba1a5f3ae545a9e6c499"
+    },
+    {
+      "path": "samples/minute-power.csv",
+      "bytes": 160145,
+      "sha256": "454441f776f61f11cd94375a837a73489c2d9f401fe471d529638dcfcfaeb3e0"
+    }
+  ]
+}

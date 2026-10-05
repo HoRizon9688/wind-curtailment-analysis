@@ -1,76 +1,41 @@
-# 风电场限电量分析 · v0.2.0
+# 风电场限电量分析
 
-`codex/browser-calculation` 分支的 T5 网页已默认在浏览器内计算，不需要 Python 计算接口。已发布的 GitHub Pages 仍是旧静态演示，T6 静态候选已在本机完成；线上发布尚未执行。
+上传分钟功率表和超短期预测“数据下载表”，自动计算调度限电量、功率预测限电量及其他差额，并通过曲线、阴影面积、逐日和小时统计展示结果。适用于符合当前AGC控制规则的场站；计算结果采用内部分析口径，不作为调度责任或结算认定。
 
-本机网页支持上传一分钟功率表和“数据下载”超短期预测表，完成校验、插值、限电分解和图表展示。支持不同场站分批导入及连续多日期分析。结果为内部规则估算，不等同于调度责任或结算认定。
+## 在线使用
 
-## GitHub Pages 已发布的旧演示
+[打开 Cloudflare 站点](https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev/?view=1&tab=dashboard) · [打开 GitHub Pages](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。页面初始展示两天合成示例，不包含真实场站数据；可上传自己的文件进行计算。
 
-[打开静态演示](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。在线版使用独立生成的两天合成数据，不包含任何实际场站数据，可操作曲线、阴影、日期和明细导出。GitHub Pages不运行Python，所以在线版不提供文件上传计算；自己的数据请按下文在本机运行当前 T5 源码。不要将下述旧演示更新命令当成 T5/T6 发布流程；新版本发布须先完成 T6 候选审核。
+1. 展开“导入新的场站数据”，选择分钟功率表和预测数据下载表，两类文件均可多选。
+2. 填写场站名称、实际装机容量及连续日期范围，确认文件来自同一场站、功率测点口径一致。
+3. 勾选确认并点击“校验并计算”；成功后页面整体更新，失败或取消保留上一次分析。
+4. 点击图例控制四条曲线和各类阴影显隐；点击小时柱形放大该小时，再次点击同一小时恢复全天。支持日期切换、拖选和分钟回放。
+5. 按需下载分钟明细、逐日汇总、排除区间或完整JSON；完整JSON包含指令总量校核数据。
 
-发布来源设置：仓库 **Settings → Pages → Deploy from a branch → main → /docs**。`docs/.nojekyll`使GitHub直接发布生成文件，无需自定义Actions工作流。
+文件在当前浏览器内通过Web Worker解析和计算，无需Python后端，也不上传原始数据到计算服务器。分析不自动保存；刷新、关闭或另开标签页后需重新导入，请及时下载需要的结果。
 
-更新演示步骤：
+支持CSV（UTF-8/BOM/GB18030）、XLSX及实际内容为OOXML的XLS。旧二进制XLS请另存为XLSX。一次分析支持1—366天，每类最多400文件，总上传大小不超过60MB。可先使用 [分钟功率合成样例](docs/samples/minute-power.csv) 和 [预测合成样例](docs/samples/forecast.csv)，容量56MW、日期2026-01-01至2026-01-02。
 
-```powershell
-python build_pages_demo.py
-git add -- docs build_pages_demo.py dashboard/src/content/dashboard
-git commit -m "Update Pages demo"
-git push origin main
-```
+## 本机运行
 
-构建脚本在独立临时目录中使用公式生成合成数据，只复制经过哈希校验的网页和合成快照到`docs/`，不会读取真实数据或覆盖本机快照。需要本机已安装的Node/Data插件。修改前端源码后应先重新执行此脚本再推送；仅推送源码不会自动重新编译演示页面。
-
-## 功能
-
-- 整期/逐日汇总、小时分布、分钟曲线、分类阴影、图表拖选、回放与导出。
-- 曲线和阴影独立显示/隐藏；可用为蓝色实线，预测为玫紫色虚线，适配浅色/深色模式。
-- 容量比例阈值、进入/退出滞回、AGC最低指令识别、其他差额四项细分。
-- 缺失区间与覆盖率；相同记录去重，冲突版本或多个预测场站混传报错。
-
-## 通过 PyCharm 启动（无需 CMD 文件）
-
-1. 用 PyCharm 的 Open 打开项目根目录，例如 `D:/限电量计算`。
-2. 配置 Python 3.10+ 解释器。本机可直接使用已经安装依赖的解释器：
-
-   ```text
-   C:/Users/HoRizon/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe
-   ```
-
-   也可创建项目虚拟环境，在该解释器终端运行 `python -m pip install -r requirements.txt`。
-
-3. 创建 Python Run Configuration：
-
-   | 配置项 | 值 |
-   |---|---|
-   | Script path | `D:/限电量计算/serve_app.py` |
-   | Parameters | `--open --port 4180` |
-   | Working directory | `D:/限电量计算` |
-   | Python interpreter | 上一步配置的解释器 |
-
-4. 点击 Run。程序先构建网页，再启动本机服务，并打开 `http://127.0.0.1:4180/?view=1&tab=dashboard`。
-5. 在网页选择分钟功率表和预测表，核对容量/日期，勾选容量与同场站确认，点击“校验并计算”。保持 Run 进程运行以提供页面；本机服务仅负责提供页面；计算在当前标签页内完成，失败或取消保留原分析。刷新后需重新选择文件。
-
-PyCharm Terminal 中也可直接执行：
+只查看和使用已构建网页，不需要Node或Data插件。在项目根目录终端执行：
 
 ```powershell
-python serve_app.py --open --port 4180
+python -m http.server 4190 --bind 127.0.0.1 --directory docs
 ```
 
-若4180已被旧服务占用，停止旧服务或改为 `--port 4181`。Python代码修改后重启服务。`--no-build`仅用于已有且未修改的构建，首次启动不要加。无需另起前端开发服务器。
+打开 `http://127.0.0.1:4190/?view=1&tab=dashboard`。Python仅提供静态页面，计算仍在浏览器中执行；按Ctrl+C停止服务。
 
-### 构建依赖
+在PyCharm中用Open打开项目文件夹，选择可用的Python解释器，创建运行配置：
 
-除Python/openpyxl外，还需要 **Node.js及Codex Data插件构建器**。当前本机已具备并会自动查找；换电脑并不是只安装requirements.txt即可运行。
+| 配置项 | 值 |
+|---|---|
+| Run方式 | Module name |
+| Module name | `http.server` |
+| Parameters | `4190 --bind 127.0.0.1 --directory docs` |
+| Working directory | 项目根目录 |
 
-若自动查找失败，在PyCharm运行配置的Environment variables中设置：
-
-```text
-WIND_NODE=C:/Users/HoRizon/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe
-WIND_DATA_APP_SCRIPT=C:/Users/HoRizon/.codex/plugins/cache/openai-curated-remote/data-analytics/1.0.11/scripts/data-app.mjs
-```
-
-按实际安装路径/插件版本调整。日常不要求`npm install`或`npm run dev`。旧4173预览可能是过期构建，请使用重新构建后的4180地址。新的浏览器计算不依赖上传接口；静态候选包的运行、构建和后续 Cloudflare 说明见 [静态候选指南](docs/static-candidate-guide.md)。
+此方式无需CMD文件，也不会每次启动重新构建。若需要修改前端并构建，请按 [开发构建与部署说明](deployment/README.md) 配置Python依赖、Node、已安装的Codex Data插件及锁定的dashboard依赖。原 `serve_app.py` 与Python CLI保留，旧流程见 [本机使用说明](本机使用说明.md)。
 
 ## 输入与时间对应
 
@@ -157,43 +122,14 @@ T = Dloss + Floss + 指令以上阈值内差额
 - 覆盖率=参与分钟/所选日期应有分钟；排除区间按`[起点,终点)`表示，重叠原因只扣一次时长。
 - 结果只累计有效分钟，不外推缺失电量。无有效分钟时网页显示“—”，不据此认定零损失。
 
-## 技术栈与流程
+## 技术栈
 
-| 层 | 技术 |
+| 部分 | 技术与用途 |
 |---|---|
-| 前端 | React 19、JavaScript/JSX、CSS；主要曲线与阴影为自定义SVG，React管理交互与状态 |
-| 页面运行时/构建 | Codex Data App提供主题、来源检查和页面容器；当前本机启动用Node调用Data插件的 `--source` 源构建，需要先安装锁定依赖 |
-| 本机页面服务及旧后端 | Python标准库`ThreadingHTTPServer`/`SimpleHTTPRequestHandler`，不是Flask/Django；仅监听127.0.0.1 |
-| 默认数据计算 | 浏览器 ESM + Web Worker；锁定 read-excel-file/fflate 读取表格，同一 JS 核心完成校验、插值和有状态归因 |
-| Python 基线/旧模式 | openpyxl/csv、upload_pipeline.py、threshold_allocation.py；保留 CLI 和本机 API 作为旧流程及对照 |
-| 默认通信/存储 | File.arrayBuffer → Worker transfer → 完整成功后更新内存分析；没有 health/calculate API 请求，不自动保存文件或结果 |
-| 测试 | Python unittest、Node内置test runner；合成数据不依赖私人快照 |
+| 页面与交互 | React 19、JavaScript/JSX、CSS、自定义SVG曲线与阴影 |
+| 解析与计算 | Web Worker、read-excel-file、fflate；表头识别、字节校验、时间对齐、线性插值、状态归因 |
+| 构建 | Vite 8、Codex Data App；页面运行时提供主题、来源检查与容器 |
+| 在线托管 | 预构建静态HTML和合成样例；访问者无需安装Python、Node或Codex |
+| 本机旧计算流程 | Python、openpyxl/csv；保留既有CLI及本机API |
 
-默认流程：选择文件并确认容量 → 浏览器读取原始字节 → Worker 校验、插值与逐分钟归因 → 完整结果替换当前分析 → 用户主动导出。计算有真实分阶段进度，可取消及重新选择文件重试。原成功分析在失败/取消期间保持不变。
-
-旧 Python API 与 CLI 保留；只有初始快照明确设 `calculationMode: "python"` 时上传表单才走旧 API。受 Data 平台管理的 hosted publication 不允许本地分析替换，不能冒充已支持平台托管计算；本次验收的是静态页面模式。
-
-## 输出与测试
-
-浏览器模式的文件与结果仅留在当前标签页内存，不写`reports/latest/`或`dashboard/src/data.json`。可主动下载整期分钟明细、逐日汇总、排除区间、含 calibration 的完整 JSON，以及当前日图表范围；导出标识来自已计算参数，CSV 做文本公式保护。刷新、关闭或另开标签页需重新导入。
-
-Python 旧模式/CLI 的磁盘结果仍在`reports/latest/`或指定 output：result.json、minutes.csv、daily.csv、excluded-intervals.csv；`--dashboard`才更新快照。构建产物为`dashboard/dist/`。
-
-```powershell
-python -m unittest discover -s tests
-node --test --test-concurrency=1 tests/dashboard.test.mjs tests/upload-model.test.mjs tests/browser/*.test.mjs
-```
-
-原始数据、案例材料、真实快照、报告、凭据和IDE配置不上传Git。首次克隆缺少快照时，服务从空模板初始化上传页面。
-
-更多说明：[本机操作](本机使用说明.md)、[阈值归因](阈值归因说明.md)、[版本记录](VERSIONING.md)。保留的`curtailment.py`为v0.1.0基础JSON历史算法，见[历史核心说明](docs/legacy-core.md)，不要与当前网页算法混用。
-
-## 浏览器计算迁移进度
-
-`codex/browser-calculation` 已完成 T0-R2、T1—T6，G1 核心对照与 G2 网页验收通过。T5 完成真实上传、Worker 接入、成功分析原子更新、来源及导出；保留主题与显隐偏好，重置日期、范围、分页和回放。公式、冻结样例和容差未改。
-
-T5 验收：Python 62/62、Node 102/102、保护验证234文件、Chrome真实整页25项。31天44,640分钟从表单读取到结果呈现约1.90秒；这是本机合成输入实测，不是性能保证。15/31/366天核心性能见T4；366天完整业务UI、真实八月私有对照和其他浏览器/低内存设备尚未在T5验证。
-
-详见 [契约](docs/browser-calculation-contract.md)、[T2/T3](planning/T2-T3-report-2026-10-05.md)、[T4](planning/T4-report-2026-10-05.md)、[T5](planning/T5-report-2026-10-05.md)。T6新增独立合成候选/清单/审核ZIP及回退包，在根路径和仓库子路径直接测试未经改写的包。Python74/74、Node102/102、真实候选22项及保护234文件通过。详见 [T6交付](planning/T6-report-2026-10-05.md) 与 [候选指南](docs/static-candidate-guide.md)。
-
-真实八月私有回归和R/G3本机审核已通过，最小颜色扫描优化后年度最长主线程任务836ms，Python74/74、Node106/106及完整保护校验通过。详见 [修复审核报告](planning/RG3-fix-report-2026-10-05.md)；当前候选打开方式见 [候选指南](docs/static-candidate-guide.md)。全年巨型导出及低内存设备未验收。GitHub Pages暂不更新，Cloudflare站点尚未创建或发布；线上发布和上线验收是后续独立步骤。
+源码不包含真实测量、预测、私有快照、凭据或本机计算结果。详细计算口径见 [阈值归因说明](阈值归因说明.md)，开发和部署见 [部署说明](deployment/README.md)。

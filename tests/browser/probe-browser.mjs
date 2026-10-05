@@ -29,7 +29,11 @@ export async function launchProbe(entry,stage='T4',options={}) {
     res.setHeader('cache-control',extname(target)==='.js'?'public, max-age=3600':'no-store');createReadStream(target).pipe(res);
   });
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  const origin=`http://127.0.0.1:${server.address().port}`;
+  const localOrigin=`http://127.0.0.1:${server.address().port}`;
+  if(options.remoteUrl && new URL(options.remoteUrl).protocol!=='https:') {
+    server.close();throw new Error('Online acceptance requires HTTPS');
+  }
+  const origin=options.remoteUrl?new URL(options.remoteUrl).origin:localOrigin;
   const chrome=process.env.BROWSER_PROBE_CHROME??['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe','/usr/bin/google-chrome','/usr/bin/chromium'].find(existsSync);
   if(!chrome){server.close();throw new Error('Chrome/Edge not installed');}
   const profile=join(tmpdir(),`wind-${stage}-${process.pid}`);mkdirSync(profile,{recursive:true});
@@ -51,8 +55,8 @@ export async function launchProbe(entry,stage='T4',options={}) {
     await call('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:false,flatten:true},sessionId);
     const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true},sessionId);if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
     await call('Network.enable',{},sessionId);await call('Runtime.enable',{},sessionId);
-    await call('Page.navigate',{url:options.siteRoot?`${origin}${prefix}/?t0-harness&view=1&tab=dashboard`:`${origin}${prefix}/reports/browser-review/${stage}/probe-build/index.html`},sessionId);
-    for(let i=0;i<100;i++){if(await evaluate(options.ready??'window.probeReady === true'))break;if(i===99)throw new Error('Probe module graph not ready');await new Promise(r=>setTimeout(r,100));}
+    await call('Page.navigate',{url:options.remoteUrl??(options.siteRoot?`${origin}${prefix}/?t0-harness&view=1&tab=dashboard`:`${origin}${prefix}/reports/browser-review/${stage}/probe-build/index.html`)},sessionId);
+    for(let i=0;i<100;i++){if(await evaluate(options.ready??'window.probeReady === true'))break;if(i===99)throw new Error('Probe module graph not ready: '+JSON.stringify(await evaluate('({url:location.href,body:document.body?.innerText.slice(0,1200)})'))+' '+JSON.stringify(browserErrors));await new Promise(r=>setTimeout(r,100));}
     return {evaluate,call,sessionId,workerSessions,requests,networkRequests,browserErrors,origin,prefix,version:await call('Browser.getVersion'),close:async()=>{clearTimeout(startTimer);for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Probe closed'));}ws.close();child.kill();await new Promise(r=>server.close(r));}};
   } catch(e){clearTimeout(startTimer);ws?.close();child.kill();server.close();throw e;}
 }

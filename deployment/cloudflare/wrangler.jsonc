@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "wind-curtailment-analysis",
+  "compatibility_date": "2026-10-05",
+  "workers_dev": true,
+  "assets": {
+    "directory": "../../reports/static-candidates/RG3-approved-2026-10-05-final/site"
+  }
+}
