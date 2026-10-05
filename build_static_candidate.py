@@ -62,7 +62,7 @@ def synthetic_snapshot():
     # this authored query metadata after the unchanged Python snapshot adapter.
     template=json.loads((ROOT/'templates/dashboard-snapshot.json').read_text(encoding='utf-8'))
     snapshot['queries']['wind_minutes']['payloadColumns']=template['queries']['wind_minutes'].get('payloadColumns',[])
-    snapshot.update(id='wind-curtailment-static-candidate-v1',pagesDemo=True,calculationMode='browser',
+    snapshot.update(id='wind-curtailment-static-candidate-v1',pagesDemo=True,calculationMode='browser',standaloneSite=True,
                     title='风电限电量分析 · 合成示例',generatedAt='2026-01-03T00:00:00+08:00',buildStatus='complete')
     source=snapshot['queries']['wind_minutes']['source']
     source['label']='示例风电场（合成数据） · 56 MW · 2026-01-01—2026-01-02'

@@ -206,6 +206,10 @@ export function DataAppShell({
   const build = dataAppBuildState(snapshot);
   const canEdit = ownerCanEdit && !build.active;
   const reportSurface = snapshot.surface === "report";
+  // Public standalone wind analysis has no Data authoring/publishing toolbar.
+  // Hosted Data apps and ordinary authoring builds retain the original chrome.
+  const standaloneSite = !hosted && !reportSurface && snapshot.standaloneSite === true
+    && snapshot.calculationMode === "browser";
   useInputModality();
   const surfaceNoun = reportSurface ? "report" : "dashboard";
   const [savedPresentation] = useState(() => {
@@ -1182,8 +1186,11 @@ export function DataAppShell({
           dashboardTitle={appTitle}
           onStatus={setActionStatus}
         >
-          <div className="dashboard-root">
-            <DataAppTopbar
+          <div className="dashboard-root" style={standaloneSite ? {
+            "--dashboard-topbar-base-height": "0px",
+            "--dashboard-tabs-visible-height": "0px",
+          } : undefined}>
+            {!standaloneSite && <DataAppTopbar
               title={appTitle}
               buildStatus={snapshot.buildStatus}
               generatedAt={snapshot.generatedAt}
@@ -1220,7 +1227,7 @@ export function DataAppShell({
               activeTabId={activeTabId}
               onTabChange={navigateDashboardTab}
               onReorderTabs={setTabs}
-            />
+            />}
             <DataAppThemeDrawer
               open={themesOpen}
               activeTheme={displayedTheme}
@@ -1266,6 +1273,11 @@ export function DataAppShell({
                   : undefined
               }
             >
+              {standaloneSite && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                <button type="button" className="dashboard-header-action-button"
+                  style={{ minHeight: 44, minWidth: 44 }} aria-label="打开外观设置"
+                  onClick={() => setThemesOpen(true)}>外观设置</button>
+              </div>}
               {children}
 
               <ChartEditorHost
