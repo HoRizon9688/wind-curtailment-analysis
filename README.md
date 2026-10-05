@@ -196,4 +196,4 @@ T5 验收：Python 62/62、Node 102/102、保护验证234文件、Chrome真实�
 
 详见 [契约](docs/browser-calculation-contract.md)、[T2/T3](planning/T2-T3-report-2026-10-05.md)、[T4](planning/T4-report-2026-10-05.md)、[T5](planning/T5-report-2026-10-05.md)。T6新增独立合成候选/清单/审核ZIP及回退包，在根路径和仓库子路径直接测试未经改写的包。Python74/74、Node102/102、真实候选22项及保护234文件通过。详见 [T6交付](planning/T6-report-2026-10-05.md) 与 [候选指南](docs/static-candidate-guide.md)。
 
-下一步为真实八月私有回归和整体R/G3审核。GitHub Pages暂不更新；之后按用户意向评估Cloudflare免费静态托管，尚未创建或发布站点。
+真实八月私有回归和R/G3本机审核已通过，最小颜色扫描优化后年度最长主线程任务836ms，Python74/74、Node106/106及完整保护校验通过。详见 [修复审核报告](planning/RG3-fix-report-2026-10-05.md)；当前候选打开方式见 [候选指南](docs/static-candidate-guide.md)。全年巨型导出及低内存设备未验收。GitHub Pages暂不更新，Cloudflare站点尚未创建或发布；线上发布和上线验收是后续独立步骤。
