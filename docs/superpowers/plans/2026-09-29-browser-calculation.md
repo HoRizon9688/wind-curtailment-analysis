@@ -78,6 +78,8 @@ createCalculationClient({onProgress, onResult, onError})
 
 Worker 请求为 `{type:'calculate',requestId,input}`；回复 type 为 `progress/result/error`，均含相同 requestId。取消由主线程 terminate，不要求同步解析库能处理 cancel 消息。禁止通过计时器伪造百分比；不能给出总数的阶段显示阶段名。
 
+2026-10-05 T4 性能实测后核定内部 `result-part` 扩展，详见 `docs/browser-calculation-contract.md`。大结果分批接收，公开成功回调仍只提交一次完整 Result；不改变算法和进度契约。
+
 接口新增 schemaVersion/algorithmVersion 时放 meta，只允许在对照中忽略已列明的版本字段。Python 原有字段不能丢失。`meta.files` 哈希/字节/名称、空值语义、功率和电量单位均须一致。
 
 ## 2. 通用测试与提交约定
@@ -213,12 +215,14 @@ test('already generated power is not counted again', () => {
 **文件：** `calculation.worker.mjs`、`calculation-client.mjs`、`tests/browser/client.test.mjs`、`tests/browser/worker.test.mjs`。
 **输入：** Input；**输出：** requestId 标记的 progress/result/error。
 
-- [ ] 先测试旧任务 A 晚于新任务 B 返回，A 不能覆盖 B；取消后的 result/error 都不能写入页面。
-- [ ] 实现依赖 T0 构建结论的 Worker 入口，所有计算调用同一 `analyzeFiles`；禁止 Worker 与主线程维护两份公式。
-- [ ] 取消通过 terminate 完成，释放引用；再次计算新建可用实例；卸载 dispose。转移 ArrayBuffer 后如需重试重新读取 File，不复用被转移而清空的缓冲。
-- [ ] 分阶段汇报读取/校验/计算/汇总，错误统一为契约对象；哈希完成后才能宣告完整成功。
-- [ ] 记录 15/31/366 天性能、冷/热加载、取消响应及可测内存。处理失败保留用户可重试操作，不把错误回退为 0 电量。
-- [ ] 运行 `node --test tests/browser/client.test.mjs tests/browser/worker.test.mjs`，并实际加载静态页面 Worker；提交。
+- [x] 先测试旧任务 A 晚于新任务 B 返回，A 不能覆盖 B；取消后的 result/error 都不能写入页面。
+- [x] 实现依赖 T0 构建结论的 Worker 入口，所有计算调用同一 `analyzeFiles`；禁止 Worker 与主线程维护两份公式。
+- [x] 取消通过 terminate 完成，释放引用；再次计算新建可用实例；卸载 dispose。转移 ArrayBuffer 后如需重试重新读取 File，不复用被转移而清空的缓冲。
+- [x] 分阶段汇报读取/校验/计算/汇总，错误统一为契约对象；哈希完成后才能宣告完整成功。
+- [x] 记录 15/31/366 天性能、冷/热加载、取消响应及可测内存。处理失败保留用户可重试操作，不把错误回退为 0 电量。
+- [x] 运行 `node --test tests/browser/client.test.mjs tests/browser/worker.test.mjs`，并实际加载静态页面 Worker；提交。
+
+2026-10-05 T4 已完成并复审通过，允许继续 T5。性能问题与分批协议扩展、实际 Data 源构建及复现证据见 `planning/T4-report-2026-10-05.md`。完整业务 UI 验收仍属于 T5。
 
 ## T5：网页、来源和导出（6～10 小时，G2）
 

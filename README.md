@@ -183,6 +183,6 @@ node --test tests/dashboard.test.mjs tests/upload-model.test.mjs
 
 ## 浏览器计算迁移进度
 
-`codex/browser-calculation` 分支已完成 T0-R2、T1、T2 和 T3，G1 计算对照通过。已实现浏览器文件读取、时间匹配、预测分钟插值、阈值状态分类及完整结果汇总。详见 [T1 契约](docs/browser-calculation-contract.md) 与 [T2/T3 交付及审核](planning/T2-T3-report-2026-10-05.md)。
+`codex/browser-calculation` 分支已完成 T0-R2、T1、T2、T3 和 T4，G1 计算对照通过。已实现浏览器文件读取、时间匹配、预测分钟插值、阈值状态分类、完整结果汇总，以及 Worker 进度、取消、旧任务隔离与大结果分批传回。详见 [T1 契约](docs/browser-calculation-contract.md)、[T2/T3 审核](planning/T2-T3-report-2026-10-05.md) 和 [T4 验收及性能](planning/T4-report-2026-10-05.md)。
 
-T1 发现的 Excel 日期截断及数字字符串差异已修复；Python 公式、冻结样例和容差保持不变。浏览器计算核心已通过真实 Chrome 四时区完整结果核验，尚未接入上传页面。本机网页仍通过 Python 计算；下一步为 T4 Worker 任务、取消与性能验证，然后 T5 接入页面上传、结果更新及导出。当前网页启动方式保持不变。
+T1 发现的 Excel 日期截断及数字字符串差异已修复；Python 公式、冻结样例和容差保持不变。浏览器核心已通过 Chrome 四时区和完整 Worker 结果核验；15/31/366 天性能及取消已实测。尚未接入上传页面，本机网页仍通过 Python 计算；下一步是 T5 页面上传、结果更新、来源及导出接入。当前网页启动方式保持不变。

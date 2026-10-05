@@ -1,5 +1,7 @@
 # 浏览器计算 T1 契约（2026-10-04）
 
+T4 于 2026-10-05 核定的唯一通信扩展：超过 4096 行的结果通过内部 `result-part` 分批传输，每批不超过 1024 行，包含 `{type,requestId,offset,totalRows,rows}`；最后 `result` 消息包含 `rowCount` 与六字段 Result 的头部（其 `rows:[]`）。客户端检查顺序/数量并装配全部行后才调用 `onResult({requestId,result})`。缺失、乱序、超量、任务过期或取消均不提交。小结果保留原完整 `result` 消息。公开 Input、Result、Progress、Error 与数值容差不变；这不是新的算法结果格式。原因是年度完整结构一次性传回实测造成 2.6—2.9 秒主线程停顿。构建/生命周期/性能证据见 T4 报告。
+
 本文件冻结 T2/T3 的交接边界。Python 基线为 `a30816b43e265ac6f23faa549bb26a6ddbcf28b2` 下的 `upload_pipeline.py`、`threshold_allocation.py`、`curtailment.py`，三者未修改。可执行字段校验位于 `dashboard/src/content/calculation/contracts.mjs`；完整输出保持原有六个顶层字段，不沿用 T0 界面样例的裁剪。
 
 ## 1. 输入、限制与时间
