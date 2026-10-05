@@ -4,7 +4,7 @@
 
 ## 在线使用
 
-[打开 Cloudflare 站点](https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev/?view=1&tab=dashboard) · [打开 GitHub Pages](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。页面初始展示两天合成示例，不包含真实场站数据；可上传自己的文件进行计算。
+[打开 Cloudflare 站点](https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev/?view=1&tab=dashboard) · [打开 GitHub Pages](https://horizon9688.github.io/wind-curtailment-analysis/?view=1&tab=dashboard)。页面初始展示两天合成示例，不包含真实场站数据；可上传自己的文件进行计算。独立站点不显示Data平台的Ask/Publish顶栏，深浅主题可通过页面内“外观设置”切换。
 
 1. 展开“导入新的场站数据”，选择分钟功率表和预测数据下载表，两类文件均可多选。
 2. 填写场站名称、实际装机容量及连续日期范围，确认文件来自同一场站、功率测点口径一致。

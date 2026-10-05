@@ -1,6 +1,6 @@
 # T6 静态候选：本机查看、构建和后续上线
 
-本文保留T6候选构建流程。用户于2026-10-05随后授权更新README、GitHub Pages并上线Cloudflare，当前发布资产为RG3-approved-2026-10-05-final，公开运行方式和部署命令以 [README](../README.md) 与 [部署说明](../deployment/README.md) 为准。浏览器计算已覆盖完整上传/校验/插值/分类/图表/导出；Python旧模式仍保留用于本机CLI与独立对照。
+本文保留T6候选构建流程。用户于2026-10-05随后授权更新README、GitHub Pages并上线Cloudflare，当前发布资产为standalone-2026-10-05-final，公开运行方式和部署命令以 [README](../README.md) 与 [部署说明](../deployment/README.md) 为准。浏览器计算已覆盖完整上传/校验/插值/分类/图表/导出；Python旧模式仍保留用于本机CLI与独立对照。
 
 ## 查看候选，无需计算后端
 
@@ -9,7 +9,7 @@
 以报告中的候选目录为例，在项目终端运行：
 
 ```powershell
-python -m http.server 4190 --bind 127.0.0.1 --directory reports/static-candidates/RG3-approved-2026-10-05-final/site
+python -m http.server 4190 --bind 127.0.0.1 --directory reports/static-candidates/standalone-2026-10-05-final/site
 ```
 
 打开 `http://127.0.0.1:4190/?view=1&tab=dashboard`。这个Python进程只提供静态文件，既无health/calculate API，也不接收所选文件；可用其他静态服务器在localhost提供，正式托管使用HTTPS；SHA-256与任务ID依赖安全上下文中的Web Crypto。最终在线访问者只需支持相关浏览器API的浏览器，不需要Python、Node、Codex或Data插件。不要拿过期4173页面作为新版本验收对象。

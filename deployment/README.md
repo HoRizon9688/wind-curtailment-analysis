@@ -29,7 +29,7 @@ python build_static_candidate.py --verify reports/static-candidates/new-release
 
 使用Workers Static Assets托管同一候选的site目录，不部署Python计算服务、数据库或文件上传接口。静态资产请求免费且不另收资产存储费，规则以[官方计费说明](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)为准。
 
-独立的cloudflare目录锁定Wrangler4.147.0，不更改dashboard依赖。先确认wrangler.jsonc中assets.directory指向本次审核通过的候选site目录；当前配置指向RG3-approved-2026-10-05-final。新克隆尚无该候选，需要先构建并更新目录。
+独立的cloudflare目录锁定Wrangler4.147.0，不更改dashboard依赖。先确认wrangler.jsonc中assets.directory指向本次审核通过的候选site目录；当前配置指向standalone-2026-10-05-final。新克隆尚无该候选，需要先构建并更新目录。
 
 ```powershell
 cd deployment/cloudflare
