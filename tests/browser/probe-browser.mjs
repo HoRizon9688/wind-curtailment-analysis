@@ -68,7 +68,8 @@ export async function launchProbe(entry,stage='T4',options={}) {
       await call('Fetch.enable',{patterns:[{urlPattern:`${origin}/*`,requestStage:'Request'}]},sessionId);
     }
     await call('Page.navigate',{url:options.remoteUrl??(options.siteRoot?`${origin}${prefix}/?t0-harness&view=1&tab=dashboard`:`${origin}${prefix}/reports/browser-review/${stage}/probe-build/index.html`)},sessionId);
-    for(let i=0;i<100;i++){if(await evaluate(options.ready??'window.probeReady === true'))break;if(i===99)throw new Error('Probe module graph not ready: '+JSON.stringify(await evaluate('({url:location.href,body:document.body?.innerText.slice(0,1200)})'))+' '+JSON.stringify(browserErrors));await new Promise(r=>setTimeout(r,100));}
+    const readyAttempts=Math.ceil((options.readyTimeoutMs??10000)/100);
+    for(let i=0;i<readyAttempts;i++){if(await evaluate(options.ready??'window.probeReady === true'))break;if(i===readyAttempts-1)throw new Error('Probe module graph not ready: '+JSON.stringify(await evaluate('({url:location.href,body:document.body?.innerText.slice(0,1200)})'))+' '+JSON.stringify(browserErrors));await new Promise(r=>setTimeout(r,100));}
     return {evaluate,call,sessionId,workerSessions,requests,networkRequests,browserErrors,origin,prefix,version:await call('Browser.getVersion'),close:async()=>{clearTimeout(startTimer);for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Probe closed'));}ws.close();child.kill();await new Promise(r=>server.close(r));}};
   } catch(e){clearTimeout(startTimer);ws?.close();child.kill();server.close();throw e;}
 }
