@@ -32,16 +32,19 @@ class UploadPipelineTests(unittest.TestCase):
 
     def test_second_point_target_and_interpolation_and_closed_energy(self):
         result = self.calculate([['2026/8/1 0:00',100,100,50,60],
-                                 ['2026/8/1 0:01',100,100,50,60]],
+                                 ['2026/8/1 0:01',100,100,50,60],
+                                 ['2026/8/1 0:02',100,100,50,60]],
                                 [('2026-07-31 23:45',80), ('2026-08-01 00:00',95)])
         a,b = result['rows'][:2]
         self.assertEqual([a['f'],b['f']], [80,81])
-        self.assertAlmostEqual(a['dispatch'],20/60)
-        self.assertAlmostEqual(b['prediction'],19/60)
-        self.assertAlmostEqual(a['other'],10/60)
+        self.assertEqual(a['dispatch'],0)
+        self.assertEqual(b['prediction'],0)
+        self.assertAlmostEqual(a['other'],50/60)
+        self.assertAlmostEqual(result['rows'][2]['dispatch'],22/60)
+        self.assertAlmostEqual(result['rows'][2]['prediction'],18/60)
         self.assertAlmostEqual(result['summary']['gap'], result['summary']['dispatch']+
                                result['summary']['prediction']+result['summary']['other'])
-        self.assertEqual(result['summary']['included'], 2)
+        self.assertEqual(result['summary']['included'], 3)
         self.assertEqual(result['summary']['expected'], 1440)
 
     def test_does_not_bridge_missing_node_exact_nodes_remain_usable(self):

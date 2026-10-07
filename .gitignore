@@ -2,6 +2,9 @@
 /功率预测数据/
 /*.csv
 /*.pdf
+/*.xlsx
+/*.xls
+/outputs/
 /reports/
 /%SystemDrive%/
 /PROGRESS.md

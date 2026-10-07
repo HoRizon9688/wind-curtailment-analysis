@@ -46,6 +46,7 @@ import { codexDataAppPromptUrl, currentDataAppReference, currentDataAppViewUrl }
 import { reviewedComponentClipboard } from "./source-provenance.js";
 import { applyDataAppTheme, dataAppThemeTokens } from "./theme-presets.js";
 import { setDataAppAppearance } from "./theme-runtime.js";
+import { FloatingThemeToggle } from "./content/shared/FloatingThemeToggle.jsx";
 import { useDataApp } from "./use-data-app.js";
 import { useDataAppImageTools } from "./use-data-app-image-tools.js";
 import { useDataAppContextTools } from "./use-data-app-context-tools.js";
@@ -210,6 +211,7 @@ export function DataAppShell({
   // Hosted Data apps and ordinary authoring builds retain the original chrome.
   const standaloneSite = !hosted && !reportSurface && snapshot.standaloneSite === true
     && snapshot.calculationMode === "browser";
+  const defaultTheme = standaloneSite ? "scientific-blue" : "original";
   useInputModality();
   const surfaceNoun = reportSurface ? "report" : "dashboard";
   const [savedPresentation] = useState(() => {
@@ -246,7 +248,7 @@ export function DataAppShell({
   const [hidden, setHidden] = useState(() => new Set(savedPresentation.hiddenBlocks ?? []));
   const [actionStatus, setActionStatus] = useState("");
   const [viewerTheme, setViewerTheme] = useState(null);
-  const [activeTheme, setActiveTheme] = useState(savedPresentation.theme ?? "original");
+  const [activeTheme, setActiveTheme] = useState(savedPresentation.theme ?? defaultTheme);
   const [appearance, setAppearance] = useState(normalizeAppearance(savedPresentation.appearance));
   const [viewerAppearance, setViewerAppearance] = useState(() => readViewerAppearance(snapshot));
   const [chartStates, setChartStates] = useState(initialUrlState.charts);
@@ -482,7 +484,7 @@ export function DataAppShell({
     }
   }, []);
   function restorePresentation(value) {
-    setActiveTheme(value.theme ?? "original");
+    setActiveTheme(value.theme ?? defaultTheme);
     setAppearance(normalizeAppearance(value.appearance));
     setAppTitle(value.title ?? snapshot.title);
     setHidden(new Set(value.hiddenBlocks ?? []));
@@ -1273,11 +1275,16 @@ export function DataAppShell({
                   : undefined
               }
             >
-              {standaloneSite && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                <button type="button" className="dashboard-header-action-button"
-                  style={{ minHeight: 44, minWidth: 44 }} aria-label="打开外观设置"
-                  onClick={() => setThemesOpen(true)}>外观设置</button>
-              </div>}
+              {standaloneSite && <FloatingThemeToggle onAppearanceChange={(value) => {
+                if (canEdit) {
+                  setAppearance(value);
+                  setViewerAppearance("");
+                  writeViewerAppearance(snapshot, "");
+                } else {
+                  setViewerAppearance(value);
+                  writeViewerAppearance(snapshot, value);
+                }
+              }} />}
               {children}
 
               <ChartEditorHost

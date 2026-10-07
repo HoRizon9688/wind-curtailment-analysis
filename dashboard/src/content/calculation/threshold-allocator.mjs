@@ -1,6 +1,6 @@
 /**
- * Reused from the supplied allocator_real.mjs and independently checked against
- * the unchanged Python allocator, frozen T1 cases and random sequence oracles.
+ * Python-equivalent allocator. Dispatch changes require three consecutive valid
+ * minutes; causal confirmation never rewrites the first two pending minutes.
  */
 export class ThresholdAllocator {
   constructor(capacity, scale = 1) {
@@ -13,12 +13,15 @@ export class ThresholdAllocator {
     this.dispatchExit = capacity * 0.005 * scale;
     this.predEnter = capacity * 0.02 * scale;
     this.predExit = capacity * 0.01 * scale;
+    this.dispatchConfirmMinutes = 3;
     this.reset();
   }
 
   reset() {
     this.dispatch = false;
     this.prediction = false;
+    this.dispatchEnterCount = 0;
+    this.dispatchExitCount = 0;
   }
 
   calculate(a, f, g, p) {
@@ -26,13 +29,28 @@ export class ThresholdAllocator {
       if (!Number.isFinite(v) || v < 0) throw new RangeError('有效分钟须使用有限非负功率');
     }
     const diff = f - g;
-    this.dispatch = this.dispatch ? diff > this.dispatchExit : diff > this.follow;
+    if (this.dispatch) {
+      this.dispatchEnterCount = 0;
+      this.dispatchExitCount = diff <= this.dispatchExit ? this.dispatchExitCount + 1 : 0;
+      if (this.dispatchExitCount >= this.dispatchConfirmMinutes) {
+        this.dispatch = false;
+        this.dispatchExitCount = 0;
+      }
+    } else {
+      this.dispatchExitCount = 0;
+      this.dispatchEnterCount = diff > this.follow ? this.dispatchEnterCount + 1 : 0;
+      if (this.dispatchEnterCount >= this.dispatchConfirmMinutes) {
+        this.dispatch = true;
+        this.dispatchEnterCount = 0;
+      }
+    }
     const trackingReference = Math.max(f, this.agcFloor);
     const following = !this.dispatch && Math.abs(g - trackingReference) <= this.follow;
     const floorFollowing = following && f < this.agcFloor;
+    const explained = following || (this.dispatch && g - trackingReference <= this.follow);
     const headroom = a - Math.max(f, g);
     this.prediction = this.prediction ? headroom > this.predExit : headroom > this.predEnter;
-    if (!(following || this.dispatch)) this.prediction = false;
+    if (!explained) this.prediction = false;
 
     const bottom = Math.max(g, p);
     const opportunity = Math.max(a - bottom, 0);
@@ -41,7 +59,7 @@ export class ThresholdAllocator {
       ? (this.dispatch ? Math.max(a - Math.max(f, g, p), 0) : opportunity)
       : 0;
     const remaining = Math.max(opportunity - dispatch - prediction, 0);
-    const unexplained = !(following || this.dispatch) ? remaining : 0;
+    const unexplained = !explained ? remaining : 0;
     const noiseAbove = remaining - unexplained;
     const below = Math.max(Math.min(a, g) - p, 0);
     const operational = below > this.dispatchExit ? below : 0;
@@ -52,6 +70,12 @@ export class ThresholdAllocator {
       : floorFollowing ? 'AGC 受2%容量下限约束的预测跟随'
       : following ? 'AGC 跟随预测'
       : 'AGC 明显高于预测且不符合下限跟随，原因待核实';
+    if (this.dispatchEnterCount) {
+      note = `调度进入待确认（${this.dispatchEnterCount}/3分钟）；指令以上差额暂列待核实，不回填`;
+    } else if (this.dispatchExitCount) {
+      note += `；调度退出待确认（${this.dispatchExitCount}/3分钟）`;
+      if (!explained) note += '；AGC 明显高于预测且不符合下限跟随，原因待核实';
+    }
     if (this.prediction) note += '；预测低估空间已达到阈值';
     if (operational) note += '；另有场站指令以下未发差额';
     if (noiseAbove + noiseBelow) note += '；小偏差单列，不计入两类限电';

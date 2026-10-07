@@ -2,7 +2,7 @@
 
 T4 于 2026-10-05 核定的唯一通信扩展：超过 4096 行的结果通过内部 `result-part` 分批传输，每批不超过 1024 行，包含 `{type,requestId,offset,totalRows,rows}`；最后 `result` 消息包含 `rowCount` 与六字段 Result 的头部（其 `rows:[]`）。客户端检查顺序/数量并装配全部行后才调用 `onResult({requestId,result})`。缺失、乱序、超量、任务过期或取消均不提交。小结果保留原完整 `result` 消息。公开 Input、Result、Progress、Error 与数值容差不变；这不是新的算法结果格式。原因是年度完整结构一次性传回实测造成 2.6—2.9 秒主线程停顿。构建/生命周期/性能证据见 T4 报告。
 
-本文件冻结 T2/T3 的交接边界。Python 基线为 `a30816b43e265ac6f23faa549bb26a6ddbcf28b2` 下的 `upload_pipeline.py`、`threshold_allocation.py`、`curtailment.py`，三者未修改。可执行字段校验位于 `dashboard/src/content/calculation/contracts.mjs`；完整输出保持原有六个顶层字段，不沿用 T0 界面样例的裁剪。
+本文件记录 T2/T3 的交接边界及后续明确批准的扩展。原 T1 Python 基线为 `a30816b43e265ac6f23faa549bb26a6ddbcf28b2`，其合成夹具作为历史记录保留。2026-10-07 用户批准调度防抖更新，当前 `upload_pipeline.py`、`threshold_allocation.py` 与浏览器端同步增加连续3分钟确认，百分比阈值不变。可执行字段校验位于 `dashboard/src/content/calculation/contracts.mjs`；完整输出仍保持六个顶层字段，不沿用 T0 界面样例的裁剪。
 
 ## 1. 输入、限制与时间
 
@@ -43,7 +43,9 @@ Result = {meta, summary, daily, gaps, rows, calibration}
 
 meta.files 按输入顺序保留 **功率文件后预测文件**：`{name,bytes,sha256}`，哈希基于原始文件字节。相同重复数据保留第一次的文件和物理行来源并累计重复数；冲突拒绝。不把事后新版本替换原采用版本。预测空数值跳过，但行的场站 id 仍参与单场站校验。
 
-thresholds 固定为百分数（不是小数比例）：AGC 下限 2、调度进入 1/退出 0.5、跟随 1、预测空间进入 2/退出 1、指令以下其他差额 0.5。进入/维持使用严格 `>`，跟随使用 `<=`，不添加 epsilon 改变阈值。跨日延续状态；任何被排除分钟重置状态。
+thresholds 的百分数参数（不是小数比例）保持不变：AGC 下限 2、调度进入 1/退出 0.5、跟随 1、预测空间进入 2/退出 1、指令以下其他差额 0.5。新增 `dispatchEnterMinutes:3`、`dispatchExitMinutes:3`，均为连续有效分钟数。调度进入使用严格 `>`，退出使用 `<=`；连续第3个满足条件的分钟确认，条件中断清零待确认计数，不向前回填。进入待确认时指令以上空间暂列其他／待核实，退出待确认时保持调度状态。跨日延续状态及计数；任何被排除分钟立即重置状态及计数。
+
+2026-10-07 防抖版本的对照结果位于 `tests/fixtures/browser/dispatch-confirmation-v2/`，使用字节不变的 T1 合成输入，版本化保存新的完整结果、分配器序列和来源哈希。测试加载器优先读取该版本的结果，解析与插值样例仍使用 T1；原 `contract/` 目录作为历史基线保留，不覆盖旧预期。独立手算测试覆盖进入、退出、中断、等号、跨日和排除分钟，不由夹具生成器生成。
 
 ### 分钟行的条件字段
 

@@ -1,6 +1,6 @@
 /**
- * Frozen T1 boundary, before algorithm migration. No allocation formula lives here.
- * Source of truth: unchanged upload_pipeline.py / threshold_allocation.py.
+ * T1-shaped public boundary, with versioned v2 dispatch confirmation metadata.
+ * No allocation formula lives here; Python and browser allocators are equivalent.
  * See docs/browser-calculation-contract.md for conditional fields and units.
  *
  * @typedef {{name:string, bytes:ArrayBuffer}} InputFile Original, unmodified bytes.
@@ -19,7 +19,7 @@ export const STATE_KEYS = Object.freeze(['dispatchState','predictionState','foll
 export const FORECAST_KEYS = Object.freeze(['version','rightVersion','target','rightTarget','leftF','rightF','weight','forecastSource','rightForecastSource']);
 export const PHASES = Object.freeze(['reading','validating','calculating','aggregating']);
 export const ERROR_CODES = Object.freeze(['INPUT','TABLE','TIME','DUPLICATE','STATION','RANGE','RESOURCE','INTERNAL']);
-export const THRESHOLDS = Object.freeze({agcFloorPct:2,dispatchEnterPct:1,dispatchExitPct:.5,followingPct:1,predictionEnterPct:2,predictionExitPct:1,operationalPct:.5});
+export const THRESHOLDS = Object.freeze({agcFloorPct:2,dispatchEnterPct:1,dispatchExitPct:.5,followingPct:1,predictionEnterPct:2,predictionExitPct:1,operationalPct:.5,dispatchEnterMinutes:3,dispatchExitMinutes:3});
 
 export class ContractError extends Error {
   constructor(path, detail) { super(`${path}: ${detail}`); this.name='ContractError'; this.code='INPUT'; this.field=path; }

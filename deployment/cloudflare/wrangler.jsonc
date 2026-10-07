@@ -4,6 +4,6 @@
   "compatibility_date": "2026-10-05",
   "workers_dev": true,
   "assets": {
-    "directory": "../../reports/static-candidates/standalone-2026-10-05-final/site"
+    "directory": "../../reports/static-candidates/release-2026-10-07/site"
   }
 }

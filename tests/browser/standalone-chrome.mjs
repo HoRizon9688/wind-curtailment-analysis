@@ -17,16 +17,13 @@ try {
  assert.equal(await p.evaluate('document.querySelectorAll(".dashboard-ask-button,.dashboard-publish-button").length'),0);
  assert.equal(await p.evaluate('document.querySelectorAll("main").length'),1);
  checks.push('authoring header, Ask and Publish absent; single main landmark retained');
- await p.evaluate('document.querySelector(\'button[aria-label="打开外观设置"]\').click()');
- await wait('Boolean(document.querySelector(\'select[aria-label="Appearance"]\'))');
- await p.evaluate(`(()=>{const e=document.querySelector('select[aria-label="Appearance"]');e.value='dark';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+ if(await p.evaluate('document.documentElement.dataset.colorScheme !== "dark"'))await p.evaluate('document.querySelector(".wind-theme-toggle").click()');
  await wait('document.documentElement.dataset.colorScheme === "dark"');
- await p.evaluate('document.querySelector(\'button[aria-label="Close theme picker"]\').click()');
- checks.push('native appearance drawer remains usable without the authoring header');
+ checks.push('floating appearance control remains usable without the authoring header');
  for(const [width,height] of [[1280,900],[665,605],[390,844]]) {
   await p.call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<700},p.sessionId);
   await p.evaluate('window.scrollTo(0,0)');await new Promise(r=>setTimeout(r,100));
-  const geometry=await p.evaluate(`(()=>{const b=document.querySelector('button[aria-label="打开外观设置"]').getBoundingClientRect();return {overflow:document.documentElement.scrollWidth-window.innerWidth,top:document.querySelector('main').getBoundingClientRect().top,width:b.width,height:b.height};})()`);
+  const geometry=await p.evaluate(`(()=>{const b=document.querySelector('.wind-theme-toggle').getBoundingClientRect();return {overflow:document.documentElement.scrollWidth-window.innerWidth,top:document.querySelector('main').getBoundingClientRect().top,width:b.width,height:b.height};})()`);
   assert.ok(geometry.overflow<=1,JSON.stringify(geometry));assert.ok(geometry.top<60,JSON.stringify(geometry));
   assert.ok(geometry.width>=44&&geometry.height>=44,JSON.stringify(geometry));
   const shot=await p.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},p.sessionId);

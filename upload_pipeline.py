@@ -266,7 +266,8 @@ def analyze_uploads(power_files, forecast_files, *, start=None, end=None, capaci
                     powerOutsidePeriod=sum(not begin <= t < finish for t in power),
                     negativePolicy='实发负值属于低风厂用电，整分钟排除，不按零替换',
                     thresholds={'agcFloorPct':2,'dispatchEnterPct':1,'dispatchExitPct':.5,'followingPct':1,
-                                'predictionEnterPct':2,'predictionExitPct':1,'operationalPct':.5},
+                                'predictionEnterPct':2,'predictionExitPct':1,'operationalPct':.5,
+                                'dispatchEnterMinutes':3,'dispatchExitMinutes':3},
                     files=[{'name':name,'bytes':len(blob),'sha256':hashlib.sha256(blob).hexdigest()}
                            for name,blob in power_files+forecast_files])
     summary=aggregate(rows)
@@ -294,12 +295,12 @@ def snapshot_for(result, template_path):
         'caveats':['所有缺失及异常分钟从电量统计排除；实发负值属于低风厂用电，整分钟排除。',
                    '数据下载表预测时间为版本时刻，第二点目标为版本+15分钟；仅在连续15分钟节点间线性插值。',
                    '用户确认AGC通常不低于容量2%；跟随比较基准取max(原预测,容量2%)，原预测与AGC曲线均保留。调度压低仍比较原预测，不因下限虚增调度损失。',
-                   '内部规则估算；插值预测不代表真实逐分钟指令。调度进入1%/退出0.5%，预测空间进入2%/退出1%，按装机容量换算；缺失分钟重置状态。'],
+                   '内部规则估算；插值预测不代表真实逐分钟指令。调度进入1%/退出0.5%，进入与退出均连续3个有效分钟确认，第3分钟生效不回填；预测空间进入2%/退出1%，按装机容量换算；缺失分钟重置状态。'],
         'metricDefinitions':[
             {'label':'调度限电','definition':'调度状态有效时 max(min(A,F)−max(G,P),0)/60 MWh。'},
             {'label':'预测限电','definition':'跟随且预测低估状态有效时 max(A−max(G,P),0)/60；调度状态中保留预测以上未发空间。'},
-            {'label':'其他差额','definition':'场站指令以下未发、阈值内小偏差、AGC明显高于预测的原因未明差额，均不混入两类限电。'}]},
-        'methods':[{'language':'text','code':'upload_pipeline.py → ThresholdAllocator；按时间顺序施加容量比例滞回，逐分钟分类乘1/60小时。跨日延续状态，缺失/排除分钟重置；保留实发修正。'}]}
+            {'label':'其他差额','definition':'场站指令以下未发、阈值内小偏差、AGC明显高于预测及调度进入待确认的原因未明差额，均不混入两类限电。'}]},
+        'methods':[{'language':'text','code':'upload_pipeline.py → ThresholdAllocator；按时间顺序施加容量比例滞回及调度连续3分钟进入/退出确认，待进入确认的指令以上差额暂列待核实，不回填；逐分钟分类乘1/60小时。跨日延续状态，缺失/排除分钟重置；保留实发修正。'}]}
     return snapshot
 
 

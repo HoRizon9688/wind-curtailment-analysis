@@ -49,7 +49,7 @@ export function UploadPanel({hasResults}){
  const current=snapshot.wind;
  const shownError=browser?analysis.state.error?.message:error;
  return <details className="wind-upload" open={!hasResults||busy||Boolean(shownError)||analysis.state.status==='cancelled'}>
-  <summary><span className="wind-upload-title">导入新的场站数据</span><span>两类文件 · 自动校验 · {browser?'浏览器本地计算':'Python 本机计算'}</span></summary>
+  <summary><span className="wind-upload-title">导入新的场站数据</span></summary>
   <form onSubmit={submit}>
    <p className="wind-upload-intro">每次选择一个场站的连续日期数据。{browser?'文件在当前浏览器内计算，不上传服务器。刷新或关闭后需重新选择文件。':'文件由本机 Python 服务计算。'}完整成功后才替换当前分析。</p>
    {current&&<p className="wind-current-analysis" data-testid="computed-parameters">当前显示：{current.meta.stationName} · {current.meta.capacity} MW · {current.meta.start} — {current.meta.end}。下方参数为待计算草稿。</p>}
@@ -79,7 +79,14 @@ export function UploadPanel({hasResults}){
 export function PeriodOverview({report,rows,date,onDate}){
  const {meta,summary:s,daily}=report,max=Math.max(1,...daily.map(d=>d.gap));
  const [exportKind,setExportKind]=useState('minutes');
+ const months=useMemo(()=>[...new Set(daily.map(d=>d.date.slice(0,7)))].sort(),[daily]);
+ const [month,setMonth]=useState(date?.slice(0,7));
+ const paged=daily.length>31;
+ const activeMonth=months.includes(month)?month:months[0];
+ const visibleDaily=paged?daily.filter(d=>d.date.startsWith(activeMonth)):daily;
+ useEffect(()=>setMonth(date?.slice(0,7)),[date,report]);
  useEffect(()=>setExportKind('minutes'),[report]);
+ function selectMonth(value){setMonth(value);if(!date?.startsWith(value))onDate(daily.find(d=>d.date.startsWith(value)).date);}
  function download(){const output=exportAnalysis(completeAnalysis(report,rows),exportKind);save(output.text,output.name,output.type);}
  return <section className="wind-period" data-reviewed-rows>
   <div className="wind-period-heading"><div><span className="wind-eyebrow">{report.origin==='browser'?'本地用户分析':'整期计算结果'} / {meta.stationName}</span><h2>{meta.start} — {meta.end}</h2></div><div className="wind-export-controls"><label>导出内容 <select aria-label="导出内容" value={exportKind} onChange={e=>setExportKind(e.target.value)}><option value="minutes">整期分钟明细</option><option value="daily">逐日汇总</option><option value="gaps">排除区间</option><option value="json">完整 JSON</option></select></label><button onClick={download}>导出所选内容</button></div></div>
@@ -91,10 +98,11 @@ export function PeriodOverview({report,rows,date,onDate}){
    <div><span>有效计算覆盖率</span><b>{fmt(s.coverage*100,2)}<small>%</small></b></div>
   </div>
   <p className="wind-period-note">参与计算 {s.included.toLocaleString()} / {s.expected.toLocaleString()} 分钟 · 排除 {s.excluded.toLocaleString()} 分钟（已去重） · 两类已归因限电中，调度占比 {s.dispatchShare==null?'—':fmt(s.dispatchShare*100,2)+'%'}。结果为内部规则估算。</p>
-  <DataComponent id="wind-daily" title="逐日限电量分布" queryId="wind_minutes" kind="custom" sourceRows={rows} displayRows={daily} variant="card">
-   <div className="wind-daily-scroll"><div className="wind-daily-bars" style={{minWidth:Math.max(260,daily.length*26)}}>{daily.map(d=><button key={d.date} className={date===d.date?'selected':''} onClick={()=>onDate(d.date)} aria-label={`${d.date}：调度 ${fmt(d.included?d.dispatch:null)}，预测 ${fmt(d.included?d.prediction:null)}，待核实 ${fmt(d.included?d.other:null)} MWh；排除 ${d.excluded} 分钟。查看当日曲线`} title={`${d.date}\n调度 ${fmt(d.included?d.dispatch:null)} MWh\n预测 ${fmt(d.included?d.prediction:null)} MWh\n待核实 ${fmt(d.included?d.other:null)} MWh\n排除 ${d.excluded} 分钟`}><div className="wind-daily-stack">{['dispatch','prediction','other'].map(k=><span key={k} style={{height:`${d[k]/max*100}%`,background:`var(--wind-${k})`}}/>)}</div><span>{d.date.slice(5)}</span>{d.excluded>0&&<i aria-hidden="true"/>}</button>)}</div></div>
+  <DataComponent id="wind-daily" title="逐日限电量分布" queryId="wind_minutes" kind="custom" sourceRows={rows} displayRows={visibleDaily} variant="card">
+   <div className="wind-daily-scroll"><div className="wind-daily-bars" style={{minWidth:Math.max(260,visibleDaily.length*(paged?18:26))}}>{visibleDaily.map(d=><button key={d.date} className={date===d.date?'selected':''} onClick={()=>onDate(d.date)} aria-label={`${d.date}：调度 ${fmt(d.included?d.dispatch:null)}，预测 ${fmt(d.included?d.prediction:null)}，待核实 ${fmt(d.included?d.other:null)} MWh；排除 ${d.excluded} 分钟。查看当日曲线`} title={`${d.date}\n调度 ${fmt(d.included?d.dispatch:null)} MWh\n预测 ${fmt(d.included?d.prediction:null)} MWh\n待核实 ${fmt(d.included?d.other:null)} MWh\n排除 ${d.excluded} 分钟`}><div className="wind-daily-stack">{['dispatch','prediction','other'].map(k=><span key={k} style={{height:`${d[k]/max*100}%`,background:`var(--wind-${k})`}}/>)}</div><span>{d.date.slice(paged?8:5)}</span>{d.excluded>0&&<i aria-hidden="true"/>}</button>)}</div></div>
+   {paged&&<div className="wind-month-navigation"><div className="wind-month-switcher" role="group" aria-label="查看月份">{months.map(value=><button type="button" key={value} data-month={value} aria-pressed={value===activeMonth} onClick={()=>selectMonth(value)}>{value.slice(0,4)}年{Number(value.slice(5))}月</button>)}</div><p role="status" aria-live="polite">当前显示 {activeMonth.slice(0,4)}年{Number(activeMonth.slice(5))}月 · {visibleDaily.length} 天。整期汇总与导出保持完整。</p></div>}
    <p className="wind-help">柱形从下到上：调度、预测、其他差额（MWh）；最高刻度 {fmt(max)} MWh。柱下标点表示含排除时段。点击任一天查看分钟曲线。</p>
-   <details className="wind-daily-table"><summary>逐日数值与覆盖率</summary><div className="wind-table-scroll"><table><thead><tr>{['日期','调度 MWh','预测 MWh','其他 MWh','参与分钟','排除分钟','覆盖率'].map(v=><th key={v}>{v}</th>)}</tr></thead><tbody>{daily.map(d=><tr key={d.date}><td>{d.date}</td><td>{fmt(d.included?d.dispatch:null)}</td><td>{fmt(d.included?d.prediction:null)}</td><td>{fmt(d.included?d.other:null)}</td><td>{d.included}</td><td>{d.excluded}</td><td>{fmt(d.coverage*100,2)}%</td></tr>)}</tbody></table></div></details>
+   <details className="wind-daily-table"><summary>逐日数值与覆盖率{paged?'（当前月份）':''}</summary><div className="wind-table-scroll"><table><thead><tr>{['日期','调度 MWh','预测 MWh','其他 MWh','参与分钟','排除分钟','覆盖率'].map(v=><th key={v}>{v}</th>)}</tr></thead><tbody>{visibleDaily.map(d=><tr key={d.date}><td>{d.date}</td><td>{fmt(d.included?d.dispatch:null)}</td><td>{fmt(d.included?d.prediction:null)}</td><td>{fmt(d.included?d.other:null)}</td><td>{d.included}</td><td>{d.excluded}</td><td>{fmt(d.coverage*100,2)}%</td></tr>)}</tbody></table></div></details>
   </DataComponent>
  </section>;
 }

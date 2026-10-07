@@ -30,8 +30,8 @@ class ThresholdTests(unittest.TestCase):
 
     def test_hysteresis_avoids_dispatch_chatter(self):
         model=ThresholdAllocator(100)
-        states=[model.calculate(100,80,g,70)['dispatchState'] for g in [79.2,78.9,79.2,79.49,79.5,79.2]]
-        self.assertEqual(states,[False,True,True,True,False,False])
+        states=[model.calculate(100,80,g,70)['dispatchState'] for g in [79.2,78.9,78.9,78.9,79.2,79.5,79.5,79.5,79.2]]
+        self.assertEqual(states,[False,False,False,True,True,True,True,False,False])
 
     def test_prediction_headroom_hysteresis(self):
         model=ThresholdAllocator(100)
@@ -39,7 +39,8 @@ class ThresholdTests(unittest.TestCase):
         self.assertEqual(states,[False,True,True,False,False])
 
     def test_executed_energy_not_counted_and_audit_closes(self):
-        r=ThresholdAllocator(100).calculate(100,80,60,90)
+        model=ThresholdAllocator(100)
+        for _ in range(3): r=model.calculate(100,80,60,90)
         self.assertAlmostEqual(r['prediction']*60,10)
         self.assertEqual(r['dispatch'],0)
         self.assertAlmostEqual(r['referenceTotal'],40/60)

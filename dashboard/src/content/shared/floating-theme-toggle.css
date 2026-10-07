@@ -1,0 +1,6 @@
+.wind-theme-toggle{position:fixed;top:18px;right:0;z-index:35;width:52px;height:48px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-strong);border-right:0;border-radius:16px 0 0 16px;background:var(--surface);color:var(--secondary);box-shadow:0 2px 12px rgb(0 0 0 / .08);cursor:pointer;transform:translateX(31px);transition:transform .18s ease,color .18s ease,background .18s ease;}
+.wind-theme-toggle:hover,.wind-theme-toggle:focus-visible{transform:translateX(0);color:var(--text);background:var(--control-hover);}
+.wind-theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+.wind-theme-toggle svg{flex-shrink:0;}
+@media(hover:none),(pointer:coarse){.wind-theme-toggle{transform:none;width:44px;height:44px;top:12px;}}
+@media(prefers-reduced-motion:reduce){.wind-theme-toggle{transition:none;}}

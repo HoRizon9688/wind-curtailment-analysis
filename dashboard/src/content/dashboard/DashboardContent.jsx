@@ -71,11 +71,11 @@ function DailyDashboard({all,meta,date,preferences,setPreferences}){
  </DataComponent>
  <div className="wind-secondary-grid"><DataComponent id="wind-hours" title="限电量的小时分布" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={hourly(scoped)} variant="card"><HourChart rows={scoped} range={range} onRange={updateRange}/></DataComponent><DataComponent id="wind-pending" title="其他差额细分（不计入两类限电）" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={scoped} variant="card"><div className="wind-pending-total"><b>{sum.matched?value(sum.other):'—'}</b><span>{unit}</span></div>{[
  ['operationalBelow','场站指令以下未发','低于 min(可用,AGC)，差额超过容量的 0.5%。'],
- ['unexplainedAbove','指令以上原因未明','AGC 明显高于预测且不符合 2% 下限跟随，原因仍待查。'],
+ ['unexplainedAbove','指令以上待核实','含调度进入确认前的差额，以及 AGC 明显高于预测且不符合 2% 下限跟随的差额。'],
  ['noiseAbove','指令以上阈值内差额','预测未发空间未满足进入 / 保持阈值。'],
  ['noiseBelow','指令以下小偏差','未超过容量的 0.5%，保留原始差额供复核。']
  ].map(([k,title,desc])=><div className="wind-split-item" key={k}><span>{title}</span><b>{sum.matched?value(sum[k]):'—'} <small>{unit}</small></b><p>{desc}</p></div>)}</DataComponent></div>
- <details className="wind-method"><summary>计算口径与数据质量<span>匹配规则、阴影边界、{sum.anomalies} 分钟基准异常</span></summary><div className="wind-method-grid"><section><h3>第二点目标时刻生效</h3><p>23:45 上传 → 00:00 版本 → 第二点 00:15 生效。相邻文件第二点按目标时刻线性插值到每分钟：F(t)=F₀+(F₁−F₀)×(t−t₀)/15分钟。不外推、不跨缺失版本插值，每条实测值代表该分钟。缺失及负实发时段整分钟排除，缺失不补零。插值值是分析基准，不等同于实际AGC下发值。</p><p>调度状态进入：F−G 大于容量的 1%；保持直到 F−G 不超过 0.5%。非调度状态下，以 max(F,2%装机容量) 为跟随基准，与 AGC 相差不超过 1% 视为跟随；低预测时识别 AGC 下限，不更改原曲线。预测低估空间 A−max(F,G) 超过 2% 时进入，降至 1% 以内退出。阈值只用于判断状态，不从已确认损失中扣减。</p></section><section><h3>阈值与连续状态</h3><p>当前范围 AGC 明显高于预测且未确认跟随 {sum.special} 分钟，实发高于可用 {sum.anomalies} 分钟；负差额不抵扣其他时段。</p><p>阈值为本次分析参数，并非调度控制器实测死区；结果仍为内部估算。跨日保持状态，排除分钟重置状态。跟随时将 max(AGC,实发) 以上的有效未发空间计入预测限电，避免重复计量已经发出的电。隐藏曲线或阴影不改变汇总。</p></section></div></details>
+ <details className="wind-method"><summary>计算口径与数据质量<span>匹配规则、阴影边界、{sum.anomalies} 分钟基准异常</span></summary><div className="wind-method-grid"><section><h3>第二点目标时刻生效</h3><p>23:45 上传 → 00:00 版本 → 第二点 00:15 生效。相邻文件第二点按目标时刻线性插值到每分钟：F(t)=F₀+(F₁−F₀)×(t−t₀)/15分钟。不外推、不跨缺失版本插值，每条实测值代表该分钟。缺失及负实发时段整分钟排除，缺失不补零。插值值是分析基准，不等同于实际AGC下发值。</p><p>调度状态进入：F−G 大于容量的 1% 连续3个有效分钟；退出：F−G 不超过 0.5% 连续3个有效分钟。在第3分钟确认，不回填；进入待确认时的指令以上差额暂列其他／待核实，退出待确认时仍按调度状态计算。条件中断则重新计数。非调度状态下，以 max(F,2%装机容量) 为跟随基准，与 AGC 相差不超过 1% 视为跟随；低预测时识别 AGC 下限，不更改原曲线。预测低估空间 A−max(F,G) 超过 2% 时进入，降至 1% 以内退出。阈值只用于判断状态，不从已确认损失中扣减。</p></section><section><h3>阈值与连续状态</h3><p>当前范围未确认预测跟随或调度状态（含调度进入待确认） {sum.special} 分钟，实发高于可用 {sum.anomalies} 分钟；负差额不抵扣其他时段。</p><p>阈值为本次分析参数，并非调度控制器实测死区；结果仍为内部估算。跨日保持状态及确认计数，排除分钟立即重置状态及计数。跟随时将 max(AGC,实发) 以上的有效未发空间计入预测限电，避免重复计量已经发出的电。隐藏曲线或阴影不改变汇总。</p></section></div></details>
  <details className="wind-detail-table"><summary>逐分钟数据<span>查看当前范围的输入功率与分类电量</span></summary><DataComponent id="wind-records" title="分钟明细" queryId="wind_minutes" kind="table" sourceRows={scoped} displayRows={scoped} variant="plain"><div className="wind-table-scroll"><table><thead><tr>{['时刻','可用 MW','实发 MW','AGC MW','预测 MW','调度 MWh','预测 MWh','待核实 MWh'].map(s=><th key={s}>{s}</th>)}</tr></thead><tbody>{scoped.slice(page*20,page*20+20).map(r=><tr key={r.minute}><td>{r.time}</td>{['a','p','g','f','dispatch','prediction','other'].map(k=><td key={k}>{fmt(r[k],['dispatch','prediction','other'].includes(k)?5:3)}</td>)}</tr>)}</tbody></table></div><div className="wind-pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(scoped.length/20))} 页</span><button disabled={(page+1)*20>=scoped.length} onClick={()=>setPage(p=>p+1)}>下一页</button></div></DataComponent></details>
  </article>;
 }
@@ -99,7 +99,7 @@ export function DashboardContent(){
  const ready=Boolean(report&&all.length);
  return <div className="wind-app">
   <T0AnalysisHarness/>
-  {(snapshot.pagesDemo===true||report?.origin==='browser')&&<p className="wind-sample-label" data-testid="analysis-origin">{report?.origin==='browser'?'本地用户分析 · 仅在当前标签页内保留，刷新后需重新导入。':'合成示例 · 全部为生成的示例数据，选择自己的文件后计算场站结果。'}</p>}
+  {(snapshot.pagesDemo===true||report?.origin==='browser')&&<p className="wind-sample-label" data-testid="analysis-origin">{report?.origin==='browser'?'本地用户分析 · 仅在当前标签页内保留，刷新后需重新导入。':'网站默认数据仅为演示使用，选择自己的文件后计算场站结果'}</p>}
   <UploadPanel hasResults={ready}/>
   {ready?<>
    <PeriodOverview report={report} rows={all} date={date} onDate={setDate}/>

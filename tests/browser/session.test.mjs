@@ -4,7 +4,7 @@ import {gunzipSync} from 'node:zlib';
 import {readFileSync} from 'node:fs';
 const session=await import('../../dashboard/src/content/dashboard/analysis-session-model.mjs').catch(()=>({}));
 const exports=await import('../../dashboard/src/content/dashboard/analysis-exports.mjs').catch(()=>({}));
-const result=JSON.parse(gunzipSync(readFileSync(new URL('../fixtures/browser/contract/expected/normal.json.gz',import.meta.url))));
+const result=JSON.parse(gunzipSync(readFileSync(new URL('../fixtures/browser/dispatch-confirmation-v2/expected/normal.json.gz',import.meta.url))));
 const flush=()=>new Promise(r=>setImmediate(r));
 function setup(){
  assert.equal(typeof session.createAnalysisSession,'function','T5 session controller must exist');

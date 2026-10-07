@@ -1,4 +1,4 @@
-"""Replay committed T1 oracles; do not regenerate or modify expected files."""
+"""Replay versioned current oracles, retaining original T1 inputs unchanged."""
 import gzip
 import hashlib
 import json
@@ -9,10 +9,16 @@ from threshold_allocation import ThresholdAllocator
 from upload_pipeline import analyze_uploads, number, parse_time
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures/browser/contract'
+CURRENT = Path(__file__).resolve().parent / 'fixtures/browser/dispatch-confirmation-v2'
+
+
+def fixture_path(name):
+    current = CURRENT/name
+    return current if current.exists() else FIXTURES/name
 
 
 def load(name):
-    return json.loads((FIXTURES/name).read_text(encoding='utf-8'))
+    return json.loads(fixture_path(name).read_text(encoding='utf-8'))
 
 
 class BrowserFixturesTest(unittest.TestCase):
@@ -31,7 +37,7 @@ class BrowserFixturesTest(unittest.TestCase):
                     self.assertEqual(str(caught.exception),fixture['error']['message'])
                 else:
                     actual=analyze_uploads(power,forecast,**options)
-                    expected=json.loads(gzip.decompress((FIXTURES/fixture['expected']).read_bytes()))
+                    expected=json.loads(gzip.decompress(fixture_path(fixture['expected']).read_bytes()))
                     self.assertEqual(actual,expected)
 
     def test_allocator_sequences_replay(self):
@@ -42,7 +48,7 @@ class BrowserFixturesTest(unittest.TestCase):
 
     def test_manifest_file_hashes(self):
         for entry in load('manifest.json')['files']:
-            blob=(FIXTURES/entry['path']).read_bytes()
+            blob=fixture_path(entry['path']).read_bytes()
             self.assertEqual(len(blob),entry['bytes'])
             self.assertEqual(hashlib.sha256(blob).hexdigest(),entry['sha256'],entry['path'])
 

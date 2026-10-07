@@ -63,7 +63,7 @@ def synthetic_snapshot():
     template=json.loads((ROOT/'templates/dashboard-snapshot.json').read_text(encoding='utf-8'))
     snapshot['queries']['wind_minutes']['payloadColumns']=template['queries']['wind_minutes'].get('payloadColumns',[])
     snapshot.update(id='wind-curtailment-static-candidate-v1',pagesDemo=True,calculationMode='browser',standaloneSite=True,
-                    title='风电限电量分析 · 合成示例',generatedAt='2026-01-03T00:00:00+08:00',buildStatus='complete')
+                    title='限电量分解',generatedAt='2026-01-03T00:00:00+08:00',buildStatus='complete')
     source=snapshot['queries']['wind_minutes']['source']
     source['label']='示例风电场（合成数据） · 56 MW · 2026-01-01—2026-01-02'
     source['caveats'].insert(0,'全部为独立公式生成的合成示例；导入自己的两类文件并确认容量后才能用于场站分析。')

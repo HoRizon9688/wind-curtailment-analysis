@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { compareResults } from './compare.mjs';
 import { LIMITS, UNITS, validateInput, validateResult, validateError, validateProgress, dateSpan } from '../../dashboard/src/content/calculation/contracts.mjs';
 import { readTable } from '../../dashboard/src/content/calculation/table-reader.mjs';
+import {fixturePath} from './fixture-tools.mjs';
 
 const fixtures = new URL('../fixtures/browser/contract/', import.meta.url);
-const load = path => readFileSync(new URL(path, fixtures));
+const load = path => readFileSync(fixturePath(path));
 const json = path => JSON.parse(load(path));
 const result = path => JSON.parse(gunzipSync(load(path)));
 const input = () => ({power:[{name:'p.csv',bytes:new ArrayBuffer(1)}],forecast:[{name:'f.csv',bytes:new ArrayBuffer(1)}],options:{capacity:100,stationName:'合成',start:null,end:null}});
@@ -122,10 +123,11 @@ test('current reader matches frozen CSV and non-date-cell OOXML tables (date-cel
 
 test('cross-day state persists, missing/negative minutes reset, endpoint and full Python range boundaries are explicit', () => {
   const cross=result('expected/cross-midnight.json.gz');
-  assert.deepEqual(cross.rows.slice(1438,1442).map(r=>r.dispatchState),[true,true,true,false]);
+  // This legacy input has only one entry-qualifying minute; it cannot confirm v2.
+  assert.deepEqual(cross.rows.slice(1438,1442).map(r=>r.dispatchState),[false,false,false,false]);
   for(const id of ['negative-and-reset','missing-and-reset']) {
     const r=result(`expected/${id}.json.gz`);
-    assert.equal(r.rows[0].dispatchState,true);assert.equal(r.rows[1].included,false);assert.equal(r.rows[2].dispatchState,false);
+    assert.equal(r.rows[0].dispatchState,false);assert.equal(r.rows[1].included,false);assert.equal(r.rows[2].dispatchState,false);
   }
   const endpoint=result('expected/inferred-midnight-endpoint.json.gz');
   assert.equal(endpoint.rows.length,1440);assert.equal(endpoint.meta.powerOutsidePeriod,1);
