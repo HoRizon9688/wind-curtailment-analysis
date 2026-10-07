@@ -1,6 +1,7 @@
 import React,{useState,useMemo,useRef,useEffect} from 'react';
 import {DataComponent,SortableRegion,SortableItem,useDataApp} from '../../data-app-public.jsx';
 import {clock,filterRows,totals,bands,stepPath,hourly} from './wind-model.mjs';
+import {panRange,zoomRange} from './chart-viewport.mjs';
 import './wind.css';
 import {UploadPanel,PeriodOverview,Exclusions} from './UploadPanel.jsx';
 import {exportAnalysis} from './analysis-exports.mjs';
@@ -17,16 +18,44 @@ function PowerChart({rows,range,selected,onSelect,onRange,visible,shades,capacit
  const max=capacity?capacity:Math.max(10,Math.ceil(Math.max(...rows.map(r=>Math.max(r.a,r.p,r.g,r.f??0,r.theory)))/5)*5);
  const min=Math.min(0,...rows.map(r=>r.p??0));
  const x=m=>left+(m-range[0])/(range[1]-range[0])*(w-left-right),y=v=>h-bottom-(v-min)/(max-min)*(h-top-bottom);
- const drag=useRef(null),[dragEnd,setDragEnd]=useState(null);
+ const drag=useRef(null),svgRef=useRef(null),viewport=useRef(null),[dragEnd,setDragEnd]=useState(null),[panning,setPanning]=useState(false);
+ viewport.current={range,onRange,width:w};
  const geo=useMemo(()=>{const fill={dispatch:'',prediction:'',other:'',missing:''};for(const r of rows)for(const b of bands(r))fill[b.kind]+=`M${x(r.minute)},${y(b.top)}H${x(r.minute+1)}V${y(b.bottom)}H${x(r.minute)}Z`;return{fill,lines:Object.fromEntries(['a','p','g','f','theory'].map(k=>[k,stepPath(rows,k,x,y)]))};},[rows,range,w,max,min]);
- const locate=e=>{const rect=e.currentTarget.getBoundingClientRect();return Math.max(range[0],Math.min(range[1]-1,Math.floor(range[0]+((e.clientX-rect.left)/rect.width*w-left)/(w-left-right)*(range[1]-range[0]))));};
+ const position=(clientX,svg,width)=>{const rect=svg.getBoundingClientRect();return Math.max(0,Math.min(1,((clientX-rect.left)/rect.width*width-left)/(width-left-right)));};
+ const locate=e=>Math.max(range[0],Math.min(range[1]-1,Math.floor(range[0]+position(e.clientX,e.currentTarget,w)*(range[1]-range[0]))));
+ useEffect(()=>{
+  const svg=svgRef.current;
+  function wheel(event){
+   // Keep browser zoom shortcuts available. A native non-passive listener is
+   // required so wheel navigation inside the plot cannot also scroll the page.
+   if(event.ctrlKey||event.metaKey||!event.deltaY)return;
+   event.preventDefault();
+   const current=viewport.current,next=zoomRange(current.range,position(event.clientX,svg,current.width),event.deltaY,event.deltaMode);
+   current.range=next;drag.current=null;setDragEnd(null);setPanning(false);current.onRange(next);
+  }
+  svg.addEventListener('wheel',wheel,{passive:false});
+  return()=>svg.removeEventListener('wheel',wheel);
+ },[]);
+ function finishGesture(event){
+  drag.current=null;setDragEnd(null);setPanning(false);
+  if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
+ }
  const tickCount=w<500?4:7;
- return <div ref={ref} className="wind-plot"><svg className="wind-power-svg" data-testid="power-chart" viewBox={`0 0 ${w} ${h}`} tabIndex={0} role="application" aria-label="功率曲线。左右方向键逐分钟查看，Shift加方向键移动15分钟；拖选至少15分钟可缩放。"
+ return <div ref={ref} className="wind-plot"><svg ref={svgRef} className={`wind-power-svg${panning?' is-panning':''}`} data-testid="power-chart" viewBox={`0 0 ${w} ${h}`} tabIndex={0} role="application" aria-label="功率曲线。按住鼠标拖动平移，滚轮围绕鼠标位置缩放；Shift加拖动可框选。左右方向键逐分钟查看，Shift加方向键移动15分钟。"
  onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const n=e.key==='Home'?range[0]:e.key==='End'?range[1]-1:selected+(e.key==='ArrowLeft'?-1:1)*(e.shiftKey?15:1);onSelect(Math.max(range[0],Math.min(range[1]-1,n)));}}}
- onPointerDown={e=>{if(e.button!==0)return;drag.current=locate(e);setDragEnd(drag.current);e.currentTarget.setPointerCapture(e.pointerId);onSelect(drag.current);}}
- onPointerMove={e=>{const m=locate(e);onSelect(m);if(drag.current!==null)setDragEnd(m);}}
- onPointerUp={e=>{const m=locate(e);if(drag.current!==null&&Math.abs(m-drag.current)>=15)onRange([Math.min(m,drag.current),Math.min(1440,Math.max(m,drag.current)+1)]);drag.current=null;setDragEnd(null);}}
- onPointerCancel={()=>{drag.current=null;setDragEnd(null);}}>
+ onPointerDown={e=>{if(e.button!==0||e.isPrimary===false)return;const rect=e.currentTarget.getBoundingClientRect(),minute=locate(e);drag.current={minute,range:[...range],clientX:e.clientX,clientY:e.clientY,width:rect.width*(w-left-right)/w,mode:e.shiftKey?'select':'pan',pointerId:e.pointerId,moved:false};setPanning(!e.shiftKey);if(e.shiftKey)setDragEnd(minute);if(e.pointerType==='mouse')e.currentTarget.focus({preventScroll:true});e.currentTarget.setPointerCapture(e.pointerId);onSelect(minute);}}
+ onPointerMove={e=>{
+  const gesture=drag.current;
+  if(!gesture){onSelect(locate(e));return;}
+  if(gesture.pointerId!==e.pointerId)return;
+  const dx=e.clientX-gesture.clientX,dy=e.clientY-gesture.clientY;
+  if(!gesture.moved){if(Math.abs(dx)<4||e.pointerType==='touch'&&Math.abs(dy)>Math.abs(dx))return;gesture.moved=true;}
+  if(gesture.mode==='select')setDragEnd(locate(e));
+  else onRange(panRange(gesture.range,dx,gesture.width));
+ }}
+ onPointerUp={e=>{const gesture=drag.current;if(gesture&&gesture.pointerId===e.pointerId&&gesture.mode==='select'){const m=locate(e);if(gesture.moved&&Math.abs(m-gesture.minute)>=15)onRange([Math.min(m,gesture.minute),Math.min(1440,Math.max(m,gesture.minute)+1)]);}finishGesture(e);}}
+ onPointerCancel={finishGesture}
+ onLostPointerCapture={()=>{drag.current=null;setDragEnd(null);setPanning(false);}}>
  <defs><pattern id="wind-hatch-missing" width="7" height="7" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 7L7 0M6 8L8 6" stroke="var(--wind-missing)" opacity=".65"/></pattern><pattern id="wind-hatch-other" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="var(--wind-other)" opacity=".22"/></pattern><clipPath id="wind-clip"><rect x={left} y={top-1} width={w-left-right} height={h-top-bottom+1}/></clipPath></defs>
  <text x="2" y="12" className="wind-tick">MW</text>
  {Array.from({length:6},(_,i)=>min+(max-min)*i/5).map(v=><g key={v}><line x1={left} x2={w-right} y1={y(v)} y2={y(v)} className="wind-grid"/><text x={left-9} y={y(v)+4} textAnchor="end" className="wind-tick">{fmt(v,min<0?1:0)}</text></g>)}
@@ -36,7 +65,7 @@ function PowerChart({rows,range,selected,onSelect,onRange,visible,shades,capacit
  {['other','prediction','dispatch','missing'].map(k=>shades[k]&&<g key={k} data-area={k}><path d={geo.fill[k]} fill={k==='missing'?'url(#wind-hatch-missing)':C[k]} fillOpacity={k==='missing'?1:k==='other'?.16:.33}/>{k==='other'&&<path d={geo.fill[k]} fill="url(#wind-hatch-other)"/>}</g>)}
  {['theory','a','f','g','p'].map(k=>visible[k]&&<path key={k} data-curve={k} d={geo.lines[k]} fill="none" stroke={C[k]} strokeWidth={k==='p'?1.8:1.4} strokeDasharray={k==='g'?'5 3':k==='f'?'8 4':k==='theory'?'2 4':undefined} vectorEffect="non-scaling-stroke"/>)}
  {selected>=range[0]&&selected<range[1]&&<line x1={x(selected+.5)} x2={x(selected+.5)} y1={top} y2={h-bottom} className="wind-crosshair"/>}
- {dragEnd!==null&&drag.current!==null&&<rect x={x(Math.min(dragEnd,drag.current))} y={top} width={Math.abs(x(dragEnd)-x(drag.current))} height={h-top-bottom} fill="var(--accent)" opacity=".15"/>}
+ {dragEnd!==null&&drag.current?.mode==='select'&&<rect x={x(Math.min(dragEnd,drag.current.minute))} y={top} width={Math.abs(x(dragEnd)-x(drag.current.minute))} height={h-top-bottom} fill="var(--accent)" opacity=".15"/>}
  </g></svg></div>;
 }
 
@@ -58,7 +87,7 @@ function DailyDashboard({all,meta,date,preferences,setPreferences}){
  function download(){const exported=exportAnalysis({meta:{...meta,start:date,end:date},rows:scoped},'minutes');const url=URL.createObjectURL(new Blob([exported.text],{type:exported.type}));const a=document.createElement('a');a.href=url;a.download=exported.name.replace('分钟分解',`${clock(range[0]).replace(':','')}-${clock(range[1]).replace(':','')}-分钟分解`);a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  const preset=(text,next)=><button key={text} className={range[0]===next[0]&&range[1]===next[1]?'active':''} onClick={()=>updateRange(next)}>{text}</button>;
  return <article className="wind-app">
- <div className="wind-context"><div className="wind-station"><span className="wind-station-icon"><Icon name="wind" size={26}/></span><div><strong>{meta.stationName}</strong><span>{meta.capacity} MW 装机容量 · MW · {meta.timezone}</span></div></div><div className="wind-meta"><span className="wind-date">{date}</span><span className="wind-badge">线性插值 · 规则估算</span><button onClick={download}><Icon name="download"/>导出当前范围</button></div></div>
+ <div className="wind-context"><div className="wind-station"><span className="wind-station-icon"><Icon name="wind" size={26}/></span><div><strong>{meta.stationName}</strong><span>{meta.capacity} MW 装机容量 · MW · {meta.timezone}</span></div></div><div className="wind-meta"><span className="wind-date">{date}</span><button onClick={download}><Icon name="download"/>导出当前范围</button></div></div>
  <div className="wind-scope"><div><span>当前范围</span><b>{clock(range[0])} — {clock(range[1])}</b><span>{scoped.length} 分钟</span></div><label>电量单位<select aria-label="电量单位" value={unit} onChange={e=>setUnit(e.target.value)}><option>MWh</option><option>万千瓦时</option></select></label></div>
  <SortableRegion id="wind-metrics-region" variant="freeform" label="电量指标" className="wind-kpis" authoredRevision={1}>{[['dispatch','调度限电','AGC 相对预测进一步压低'],['prediction','功率预测限电','预测偏低约束可用出力'],['other','其他差额','场站未发、原因未明与阈值内小偏差'],['excluded','已排除时段','缺失、厂用电负值及其他异常，不计入分类电量']].map(([k,title,desc])=><SortableItem key={k} id={`wind-${k}-metric`} label={title} kind="metric"><DataComponent id={`wind-${k}-metric`} title={title} queryId="wind_minutes" kind="metric" sourceRows={scoped} displayRows={scoped} variant="card" className="wind-metric"><div className="wind-metric-number" data-testid={`total-${k}`} style={{color:C[k]}}>{k==='excluded'?sum.excluded:sum.matched===0?'—':value(sum[k])}<small>{k==='excluded'?'分钟':unit}</small></div><p>{desc}</p></DataComponent></SortableItem>)}</SortableRegion>
  <div className="wind-coverage"><span><i/>参与计算 <b>{sum.matched}</b> / {scoped.length} 分钟</span><span>有效时段正差额 <b>{value(sum.gap)} {unit}</b> = 两类限电 + 其他差额</span></div>
@@ -67,7 +96,7 @@ function DailyDashboard({all,meta,date,preferences,setPreferences}){
  <div className="wind-chart-toolbar"><div className="wind-presets">{preset('全天',[0,1440])}{preset('低 AGC 时段',[480,840])}{preset('凌晨',[0,360])}{preset('傍晚',[1020,1440])}</div><div className="wind-play"><button aria-label="恢复全天范围" onClick={()=>updateRange([0,1440])}><Icon name="reset"/></button><button disabled={reduced} onClick={()=>{if(selected>=range[1]-1)setSelected(range[0]);setPlaying(!playing);}}><Icon name={playing?'pause':'play'}/>{playing?'暂停':'回放'}</button></div></div>
  <p className="wind-help">点击下方曲线按钮可显示或隐藏；曲线与阴影分别控制，不改变计算结果。</p><div className="wind-legends"><div className="wind-line-legend">{['a','p','g','f','theory'].map(k=><button key={k} aria-pressed={visible[k]} aria-label={`${visible[k]?'隐藏':'显示'}${L[k]}`} title={`点击${visible[k]?'隐藏':'显示'}${L[k]}`} className={visible[k]?'':'off'} onClick={()=>setVisible(v=>({...v,[k]:!v[k]}))}><span className={`wind-line-key ${['g','f','theory'].includes(k)?'dashed':''}`} style={{borderColor:C[k]}}/>{L[k]}<small className="wind-visibility-state">{visible[k]?'已显示':'已隐藏'}</small></button>)}</div><label className="wind-capacity"><input type="checkbox" checked={capacity} onChange={e=>setCapacity(e.target.checked)}/>显示 {meta.capacity} MW 容量</label></div>
  <div className="wind-chart-grid"><div className="wind-chart-main"><PowerChart rows={scoped} range={range} selected={selected} onSelect={m=>{setSelected(m);setPlaying(false);}} onRange={updateRange} visible={visible} shades={shades} capacity={capacity?meta.capacity:0}/><div className="wind-area-legend">{['dispatch','prediction','other'].map(k=><button key={k} aria-pressed={shades[k]} className={shades[k]?'':'off'} onClick={()=>setShades(v=>({...v,[k]:!v[k]}))}><span style={{background:C[k]}}/>{L[k]}面积</button>)}<span>面积 = 功率差 × 时间</span></div></div><Minute row={row} range={range} onPrevious={()=>{setSelected(m=>Math.max(range[0],m-1));setPlaying(false);}} onNext={()=>{setSelected(m=>Math.min(range[1]-1,m+1));setPlaying(false);}}/></div>
- <div className="wind-range-controls"><label>起点 <b>{clock(range[0])}</b><input aria-label="范围起点" type="range" min="0" max="1425" step="1" value={range[0]} onChange={e=>updateRange([Math.min(Number(e.target.value),range[1]-15),range[1]])}/></label><label>终点 <b>{clock(range[1])}</b><input aria-label="范围终点" type="range" min="15" max="1440" step="1" value={range[1]} onChange={e=>updateRange([range[0],Math.max(Number(e.target.value),range[0]+15)])}/></label><span>拖选图表放大 · 方向键逐分钟查看</span></div>
+ <div className="wind-range-controls"><label>起点 <b>{clock(range[0])}</b><input aria-label="范围起点" type="range" min="0" max="1425" step="1" value={range[0]} onChange={e=>updateRange([Math.min(Number(e.target.value),range[1]-15),range[1]])}/></label><label>终点 <b>{clock(range[1])}</b><input aria-label="范围终点" type="range" min="15" max="1440" step="1" value={range[1]} onChange={e=>updateRange([range[0],Math.max(Number(e.target.value),range[0]+15)])}/></label><span>按住拖动平移 · 滚轮缩放 · Shift 拖动框选</span></div>
  </DataComponent>
  <div className="wind-secondary-grid"><DataComponent id="wind-hours" title="限电量的小时分布" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={hourly(scoped)} variant="card"><HourChart rows={scoped} range={range} onRange={updateRange}/></DataComponent><DataComponent id="wind-pending" title="其他差额细分（不计入两类限电）" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={scoped} variant="card"><div className="wind-pending-total"><b>{sum.matched?value(sum.other):'—'}</b><span>{unit}</span></div>{[
  ['operationalBelow','场站指令以下未发','低于 min(可用,AGC)，差额超过容量的 0.5%。'],
@@ -75,7 +104,7 @@ function DailyDashboard({all,meta,date,preferences,setPreferences}){
  ['noiseAbove','指令以上阈值内差额','预测未发空间未满足进入 / 保持阈值。'],
  ['noiseBelow','指令以下小偏差','未超过容量的 0.5%，保留原始差额供复核。']
  ].map(([k,title,desc])=><div className="wind-split-item" key={k}><span>{title}</span><b>{sum.matched?value(sum[k]):'—'} <small>{unit}</small></b><p>{desc}</p></div>)}</DataComponent></div>
- <details className="wind-method"><summary>计算口径与数据质量<span>匹配规则、阴影边界、{sum.anomalies} 分钟基准异常</span></summary><div className="wind-method-grid"><section><h3>第二点目标时刻生效</h3><p>23:45 上传 → 00:00 版本 → 第二点 00:15 生效。相邻文件第二点按目标时刻线性插值到每分钟：F(t)=F₀+(F₁−F₀)×(t−t₀)/15分钟。不外推、不跨缺失版本插值，每条实测值代表该分钟。缺失及负实发时段整分钟排除，缺失不补零。插值值是分析基准，不等同于实际AGC下发值。</p><p>调度状态进入：F−G 大于容量的 1% 连续3个有效分钟；退出：F−G 不超过 0.5% 连续3个有效分钟。在第3分钟确认，不回填；进入待确认时的指令以上差额暂列其他／待核实，退出待确认时仍按调度状态计算。条件中断则重新计数。非调度状态下，以 max(F,2%装机容量) 为跟随基准，与 AGC 相差不超过 1% 视为跟随；低预测时识别 AGC 下限，不更改原曲线。预测低估空间 A−max(F,G) 超过 2% 时进入，降至 1% 以内退出。阈值只用于判断状态，不从已确认损失中扣减。</p></section><section><h3>阈值与连续状态</h3><p>当前范围未确认预测跟随或调度状态（含调度进入待确认） {sum.special} 分钟，实发高于可用 {sum.anomalies} 分钟；负差额不抵扣其他时段。</p><p>阈值为本次分析参数，并非调度控制器实测死区；结果仍为内部估算。跨日保持状态及确认计数，排除分钟立即重置状态及计数。跟随时将 max(AGC,实发) 以上的有效未发空间计入预测限电，避免重复计量已经发出的电。隐藏曲线或阴影不改变汇总。</p></section></div></details>
+
  <details className="wind-detail-table"><summary>逐分钟数据<span>查看当前范围的输入功率与分类电量</span></summary><DataComponent id="wind-records" title="分钟明细" queryId="wind_minutes" kind="table" sourceRows={scoped} displayRows={scoped} variant="plain"><div className="wind-table-scroll"><table><thead><tr>{['时刻','可用 MW','实发 MW','AGC MW','预测 MW','调度 MWh','预测 MWh','待核实 MWh'].map(s=><th key={s}>{s}</th>)}</tr></thead><tbody>{scoped.slice(page*20,page*20+20).map(r=><tr key={r.minute}><td>{r.time}</td>{['a','p','g','f','dispatch','prediction','other'].map(k=><td key={k}>{fmt(r[k],['dispatch','prediction','other'].includes(k)?5:3)}</td>)}</tr>)}</tbody></table></div><div className="wind-pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(scoped.length/20))} 页</span><button disabled={(page+1)*20>=scoped.length} onClick={()=>setPage(p=>p+1)}>下一页</button></div></DataComponent></details>
  </article>;
 }

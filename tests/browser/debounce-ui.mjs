@@ -38,8 +38,8 @@ try{
   assert.deepEqual(r.rows.slice(6,12).map(x=>x.dispatchState),[false,false,true,true,true,false]);
   for(const x of r.rows.slice(9,11)){assert.equal(x.prediction,0);assert.equal(x.dispatch,0);assert.equal(x.unexplainedAbove*60,5);assert.match(x.note,/原因待核实/);}
   assert.equal(r.summary.included,12);assert.ok(Math.abs(r.summary.dispatch-41/60)<1e-10);
-  assert.ok(await p.evaluate('document.querySelector(".wind-method").textContent.includes("连续3个有效分钟")'));
+  assert.equal(await p.evaluate('Boolean(document.querySelector(".wind-method"))'),false);
   assert.equal(p.browserErrors.length,0);
   writeFileSync(join(out,'checks.json'),JSON.stringify({passed:true,nativeUpload:true,realWorker:true,causalStates:r.rows.slice(0,12).map(x=>x.dispatchState),highAgcExitProtection:true,handDispatchMWh:41/60,thresholds:r.meta.thresholds},null,2));
-  console.log('PASS built-page native upload → real Worker → 12 independent hand minutes including high-AGC exit → JSON export and updated method copy');
+  console.log('PASS built-page native upload → real Worker → 12 independent hand minutes including high-AGC exit → JSON export; optional method explanation removed');
 }finally{await p.close();}

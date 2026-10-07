@@ -26,8 +26,14 @@ export function DataAppRuntime({
   createContent,
   DashboardContent,
   ReportContent,
-  hosted = globalThis.location?.hostname.endsWith(".chatgpt.site") ?? false,
+  hosted: requestedHosted = globalThis.location?.hostname.endsWith(".chatgpt.site") ?? false,
 } = {}) {
+  // Sites can also host an independent static app. Its explicit browser-local
+  // release uses the bundled snapshot; platform authentication remains outside
+  // this runtime and does not imply the Data-specific /api/* contract exists.
+  const standaloneBrowser = reviewedSnapshot?.standaloneSite === true
+    && reviewedSnapshot?.calculationMode === "browser";
+  const hosted = requestedHosted && !standaloneBrowser;
   const [snapshot, setSnapshot] = useState(hosted ? null : reviewedSnapshot);
   const [presentationRecord, setPresentationRecord] = useState({ presentation: {}, revision: 0 });
   const [error, setError] = useState(null);

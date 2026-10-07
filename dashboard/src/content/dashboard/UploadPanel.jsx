@@ -113,11 +113,11 @@ export function Exclusions({gaps,excluded,onDate,report,rows}){
  const reasons=useMemo(()=>[...new Set(gaps.map(g=>g.reason))],[gaps]);
  const filtered=useMemo(()=>reason==='all'?gaps:gaps.filter(g=>g.reason===reason),[gaps,reason]);
  function exportGaps(){const output=exportAnalysis(completeAnalysis(report,rows),'gaps');save(output.text,output.name,output.type);}
- return <section className="wind-exclusions" data-reviewed-rows><div className="wind-period-heading"><div><span className="wind-eyebrow">数据质量</span><h2>排除区间 · {excluded.toLocaleString()} 分钟</h2></div><button onClick={exportGaps} disabled={!gaps.length}>导出排除区间</button></div>
+ return <details className="wind-exclusions" data-reviewed-rows><summary>排除区间<span>数据质量 · {excluded.toLocaleString()} 分钟</span></summary><div className="wind-exclusions-body"><div className="wind-exclusion-actions"><button onClick={exportGaps} disabled={!gaps.length}>导出排除区间</button></div>
   <p>区间包含起点、不含终点；同一分钟可能有多个排除原因，整期排除分钟数已去重。实发负值为低风厂用电，整分钟不参与分类计算。</p>
   <label>筛选原因 <select value={reason} onChange={e=>{setReason(e.target.value);setPage(0);}}><option value="all">全部原因</option>{reasons.map(r=><option key={r}>{r}</option>)}</select></label>
   <div className="wind-table-scroll"><table><thead><tr><th>起点（含）</th><th>终点（不含）</th><th>分钟</th><th>排除原因</th><th>定位</th></tr></thead><tbody>{filtered.slice(page*10,page*10+10).map((g,i)=><tr key={g.start+g.reason}><td>{g.start.slice(0,16).replace('T',' ')}</td><td>{g.end.slice(0,16).replace('T',' ')}</td><td>{g.minutes}</td><td>{g.reason}</td><td><button onClick={()=>onDate(g.start.slice(0,10))}>查看当天</button></td></tr>)}</tbody></table></div>
   {!filtered.length&&<p>当前筛选下没有排除区间。</p>}
   <div className="wind-pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(filtered.length/10))} 页 · {filtered.length} 个区间</span><button disabled={(page+1)*10>=filtered.length} onClick={()=>setPage(p=>p+1)}>下一页</button></div>
- </section>;
+ </div></details>;
 }

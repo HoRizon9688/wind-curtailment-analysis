@@ -22,14 +22,17 @@ export async function launchProbe(entry,stage='T4',options={}) {
     const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
     if(!path.startsWith(prefix+'/')){res.writeHead(404).end();return;}
     const suffix=path.slice(prefix.length);
-    const target=options.siteRoot?resolve(servingRoot,'.'+(suffix==='/'?'/index.html':suffix)):resolve(ROOT,'.'+suffix),rel=relative(servingRoot,target);
+    let target=options.siteRoot?resolve(servingRoot,'.'+(suffix==='/'?'/index.html':suffix)):resolve(ROOT,'.'+suffix);
+    if(options.spaFallback && options.siteRoot && !existsSync(target))target=join(servingRoot,'index.html');
+    const rel=relative(servingRoot,target);
     if(rel.startsWith('..')||rel.startsWith(sep)||!existsSync(target)||!statSync(target).isFile()){res.writeHead(404).end();return;}
     res.setHeader('content-type',extname(target)==='.html'?'text/html; charset=utf-8':extname(target)==='.js'?'text/javascript; charset=utf-8':'application/octet-stream');
     // Cache only program modules; synthetic data and result pages are no-store.
     res.setHeader('cache-control',extname(target)==='.js'?'public, max-age=3600':'no-store');createReadStream(target).pipe(res);
   });
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  const localOrigin=`http://127.0.0.1:${server.address().port}`;
+  if(options.localHostname && options.remoteUrl){server.close();throw Error('Local hostname cannot be used for remote probes');}
+  const localOrigin=`http://${options.localHostname??'127.0.0.1'}:${server.address().port}`;
   if(options.remoteUrl && new URL(options.remoteUrl).protocol!=='https:') {
     server.close();throw new Error('Online acceptance requires HTTPS');
   }
@@ -37,13 +40,18 @@ export async function launchProbe(entry,stage='T4',options={}) {
   const chrome=process.env.BROWSER_PROBE_CHROME??['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe','/usr/bin/google-chrome','/usr/bin/chromium'].find(existsSync);
   if(!chrome){server.close();throw new Error('Chrome/Edge not installed');}
   const profile=join(tmpdir(),`wind-${stage}-${process.pid}`);mkdirSync(profile,{recursive:true});
-  const child=spawn(chrome,['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--disable-extensions','--disable-background-networking','--disable-component-update','--disable-sync','--enable-precise-memory-info','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+  const child=spawn(chrome,['--headless=new',...(options.localHostname?[`--host-resolver-rules=MAP ${options.localHostname} 127.0.0.1`,'--no-proxy-server',`--unsafely-treat-insecure-origin-as-secure=${localOrigin}`]:[]),'--disable-gpu','--no-first-run','--no-default-browser-check','--disable-extensions','--disable-background-networking','--disable-component-update','--disable-sync','--enable-precise-memory-info','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
   let ws,startTimer;
   try {
     const endpoint=await new Promise((r,j)=>{startTimer=setTimeout(()=>j(new Error('Chrome startup timeout')),15000);let output='';child.stderr.on('data',chunk=>{output+=chunk;const m=/DevTools listening on (ws:\/\/[^\s]+)/.exec(output);if(m){clearTimeout(startTimer);r(m[1]);}});child.on('error',j);});
     ws=new WebSocket(endpoint);await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
     let id=0;const pending=new Map(),workerSessions=new Set();
     ws.addEventListener('message',e=>{const m=JSON.parse(e.data);
+      if(m.method==='Fetch.requestPaused' && options.siteAuthorization){
+        const headers={...m.params.request.headers};
+        if(new URL(m.params.request.url).origin===origin)headers['OAI-Sites-Authorization']=`Bearer ${options.siteAuthorization}`;
+        call('Fetch.continueRequest',{requestId:m.params.requestId,headers:Object.entries(headers).map(([name,value])=>({name,value:String(value)}))},m.sessionId).catch(()=>{});
+      }
       if(m.method==='Network.requestWillBeSent')networkRequests.push({url:m.params.request.url,method:m.params.request.method,postData:m.params.request.postData??null});
       if(m.method==='Runtime.exceptionThrown')browserErrors.push(m.params.exceptionDetails.text);
       if(m.method==='Target.attachedToTarget'&&m.params.targetInfo.type==='worker')workerSessions.add(m.params.sessionId);
@@ -55,6 +63,10 @@ export async function launchProbe(entry,stage='T4',options={}) {
     await call('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:false,flatten:true},sessionId);
     const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true},sessionId);if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
     await call('Network.enable',{},sessionId);await call('Runtime.enable',{},sessionId);
+    if(options.siteAuthorization){
+      if(!options.remoteUrl)throw Error('Sites service authorization is for remote checks only');
+      await call('Fetch.enable',{patterns:[{urlPattern:`${origin}/*`,requestStage:'Request'}]},sessionId);
+    }
     await call('Page.navigate',{url:options.remoteUrl??(options.siteRoot?`${origin}${prefix}/?t0-harness&view=1&tab=dashboard`:`${origin}${prefix}/reports/browser-review/${stage}/probe-build/index.html`)},sessionId);
     for(let i=0;i<100;i++){if(await evaluate(options.ready??'window.probeReady === true'))break;if(i===99)throw new Error('Probe module graph not ready: '+JSON.stringify(await evaluate('({url:location.href,body:document.body?.innerText.slice(0,1200)})'))+' '+JSON.stringify(browserErrors));await new Promise(r=>setTimeout(r,100));}
     return {evaluate,call,sessionId,workerSessions,requests,networkRequests,browserErrors,origin,prefix,version:await call('Browser.getVersion'),close:async()=>{clearTimeout(startTimer);for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Probe closed'));}ws.close();child.kill();await new Promise(r=>server.close(r));}};

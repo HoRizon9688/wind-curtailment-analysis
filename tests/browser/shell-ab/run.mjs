@@ -296,7 +296,7 @@ async function main() {
       kpis: ['dispatch','prediction','other','excluded'].map((k) => document.querySelector('[data-testid="total-' + k + '"]')?.textContent ?? null),
       dayOptions: Array.from(document.querySelectorAll('.wind-day-selector select option')).map((o) => o.textContent),
       dailyBars: document.querySelectorAll('.wind-daily-bars button').length,
-      exclusions: document.querySelector('.wind-exclusions h2')?.textContent ?? null,
+      exclusions: document.querySelector('.wind-exclusions summary')?.textContent ?? null,
       minuteRows: document.querySelectorAll('.wind-detail-table tbody tr').length
     })`;
 
