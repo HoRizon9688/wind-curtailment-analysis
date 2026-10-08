@@ -8,7 +8,7 @@ const cloudflare=remote?.origin==='https://wind-curtailment-analysis.wind-curtai
 if(remote)assert.ok(cloudflare||remote.href==='https://horizon9688.github.io/wind-curtailment-analysis/','explicit approved production target only');
 const out=join(ROOT,'reports/browser-review/generation-2026-10-08',remote?remote.hostname:'local');mkdirSync(out,{recursive:true});
 const ready='!!window.__T0__ && !!document.querySelector("[data-testid=total-generation]")';
-const p=await launchProbe(null,'generation-ui'+(remote?'-'+remote.hostname:''),{siteRoot:join(candidate,'site'),prefix:'',...(remote?{remoteUrl:remote.href+'?view=1&tab=dashboard',readyTimeoutMs:60000}:{}),ready:cloudflare?'!!document.querySelector("#access-form")':ready});
+const p=await launchProbe(null,'generation-ui'+(remote?'-'+remote.hostname:''),{siteRoot:join(candidate,'site'),prefix:'',...(remote?{remoteUrl:remote.href+'?t0-harness&view=1&tab=dashboard',readyTimeoutMs:60000}:{}),ready:cloudflare?'!!document.querySelector("#access-form")':ready});
 const checks=[],delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(expr){for(let i=0;i<350;i++){if(await p.evaluate(expr))return;await delay(40);}throw Error('UI timeout: '+expr);}
 async function set(selector,value){await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(e.tagName==='SELECT')e.value=${JSON.stringify(value)};else Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await delay(60);}
