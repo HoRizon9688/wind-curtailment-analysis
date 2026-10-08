@@ -33,7 +33,8 @@ export async function launchProbe(entry,stage='T4',options={}) {
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   if(options.localHostname && options.remoteUrl){server.close();throw Error('Local hostname cannot be used for remote probes');}
   const localOrigin=`http://${options.localHostname??'127.0.0.1'}:${server.address().port}`;
-  if(options.remoteUrl && new URL(options.remoteUrl).protocol!=='https:') {
+  const explicitLoopback=options.localWorkerPreview===true && options.remoteUrl && new URL(options.remoteUrl).protocol==='http:' && new URL(options.remoteUrl).hostname==='127.0.0.1';
+  if(options.remoteUrl && new URL(options.remoteUrl).protocol!=='https:' && !explicitLoopback) {
     server.close();throw new Error('Online acceptance requires HTTPS');
   }
   const origin=options.remoteUrl?new URL(options.remoteUrl).origin:localOrigin;
