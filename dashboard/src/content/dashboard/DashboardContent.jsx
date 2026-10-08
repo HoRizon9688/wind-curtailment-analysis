@@ -1,13 +1,14 @@
 import React,{useState,useMemo,useRef,useEffect} from 'react';
 import {DataComponent,SortableRegion,SortableItem,useDataApp} from '../../data-app-public.jsx';
 import {clock,filterRows,totals,bands,stepPath,hourly} from './wind-model.mjs';
+import {generationTotals} from './generation-model.mjs';
 import {panRange,zoomRange} from './chart-viewport.mjs';
 import './wind.css';
 import {UploadPanel,PeriodOverview,Exclusions} from './UploadPanel.jsx';
 import {exportAnalysis} from './analysis-exports.mjs';
 import {T0AnalysisHarness} from './analysis-session.jsx';
 
-const C={a:'var(--wind-available)',p:'var(--wind-actual)',g:'var(--wind-agc)',f:'var(--wind-forecast)',theory:'var(--wind-theory)',dispatch:'var(--wind-dispatch)',prediction:'var(--wind-prediction)',other:'var(--wind-other)',missing:'var(--wind-missing)'};
+const C={a:'var(--wind-available)',p:'var(--wind-actual)',g:'var(--wind-agc)',f:'var(--wind-forecast)',theory:'var(--wind-theory)',dispatch:'var(--wind-dispatch)',prediction:'var(--wind-prediction)',other:'var(--wind-other)',generation:'var(--wind-generation)',missing:'var(--wind-missing)'};
 const L={a:'可用功率',p:'实发功率',g:'AGC 指令',f:'预测（线性插值）',theory:'理论功率',dispatch:'调度限电',prediction:'预测限电',other:'其他差额',missing:'已排除时段'};
 const fmt=(v,d=3)=>v==null?'—':v.toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
 function Icon({name,size=18}){const p={wind:'M3 8h12a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h6',download:'M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5',play:'m8 4 12 8-12 8Z',pause:'M8 5v14M16 5v14',reset:'M4 10a8 8 0 1 1 0 5M4 3v7h7',info:'M12 10v7M12 7h.01'};return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={p[name]||p.info}/></svg>;}
@@ -79,6 +80,7 @@ function DailyDashboard({all,meta,date,preferences,setPreferences}){
  const setPreference=(key,value)=>setPreferences(p=>({...p,[key]:typeof value==='function'?value(p[key]):value}));
  const setUnit=v=>setPreference('unit',v),setVisible=v=>setPreference('visible',v),setShades=v=>setPreference('shades',v),setCapacity=v=>setPreference('capacity',v);
  const scoped=useMemo(()=>filterRows(all,range),[all,range]),sum=useMemo(()=>totals(scoped),[scoped]),row=all.find(r=>r.minute===selected)||scoped[0];
+ const generation=useMemo(()=>generationTotals(scoped,meta.capacity),[scoped,meta.capacity]);
  function updateRange(next){setRange(next);setSelected(m=>Math.max(next[0],Math.min(next[1]-1,m)));setPage(0);setPlaying(false);}
  useEffect(()=>{const media=window.matchMedia('(prefers-reduced-motion: reduce)');const change=()=>{setReduced(media.matches);if(media.matches)setPlaying(false);};change();media.addEventListener('change',change);const hide=()=>{if(document.hidden)setPlaying(false);};document.addEventListener('visibilitychange',hide);return()=>{media.removeEventListener('change',change);document.removeEventListener('visibilitychange',hide);};},[]);
  useEffect(()=>{if(!playing)return;const timer=setInterval(()=>setSelected(m=>Math.min(range[1]-1,m+5)),160);return()=>clearInterval(timer);},[playing,range]);
@@ -89,7 +91,7 @@ function DailyDashboard({all,meta,date,preferences,setPreferences}){
  return <article className="wind-app">
  <div className="wind-context"><div className="wind-station"><span className="wind-station-icon"><Icon name="wind" size={26}/></span><div><strong>{meta.stationName}</strong><span>{meta.capacity} MW 装机容量 · MW · {meta.timezone}</span></div></div><div className="wind-meta"><span className="wind-date">{date}</span><button onClick={download}><Icon name="download"/>导出当前范围</button></div></div>
  <div className="wind-scope"><div><span>当前范围</span><b>{clock(range[0])} — {clock(range[1])}</b><span>{scoped.length} 分钟</span></div><label>电量单位<select aria-label="电量单位" value={unit} onChange={e=>setUnit(e.target.value)}><option>MWh</option><option>万千瓦时</option></select></label></div>
- <SortableRegion id="wind-metrics-region" variant="freeform" label="电量指标" className="wind-kpis" authoredRevision={1}>{[['dispatch','调度限电','AGC 相对预测进一步压低'],['prediction','功率预测限电','预测偏低约束可用出力'],['other','其他差额','场站未发、原因未明与阈值内小偏差'],['excluded','已排除时段','缺失、厂用电负值及其他异常，不计入分类电量']].map(([k,title,desc])=><SortableItem key={k} id={`wind-${k}-metric`} label={title} kind="metric"><DataComponent id={`wind-${k}-metric`} title={title} queryId="wind_minutes" kind="metric" sourceRows={scoped} displayRows={scoped} variant="card" className="wind-metric"><div className="wind-metric-number" data-testid={`total-${k}`} style={{color:C[k]}}>{k==='excluded'?sum.excluded:sum.matched===0?'—':value(sum[k])}<small>{k==='excluded'?'分钟':unit}</small></div><p>{desc}</p></DataComponent></SortableItem>)}</SortableRegion>
+ <SortableRegion id="wind-metrics-region" variant="freeform" label="电量指标" className="wind-kpis wind-kpis--generation" authoredRevision={2}>{[['dispatch','调度限电','AGC 相对预测进一步压低'],['prediction','预测限电','预测偏低约束可用出力'],['other','其他差额','场站未发、原因未明与阈值内小偏差'],['generation',range[0]===0&&range[1]===1440?'当日发电量':'范围发电量','实发正功率逐分钟积分'],['excluded','已排除时段','缺失、厂用电负值及其他异常，不计入分类电量']].map(([k,title,desc])=><SortableItem key={k} id={`wind-${k}-metric`} label={title} kind="metric"><DataComponent id={`wind-${k}-metric`} title={title} queryId="wind_minutes" kind="metric" sourceRows={scoped} displayRows={scoped} variant="card" className="wind-metric"><div className="wind-metric-number" data-testid={`total-${k}`} style={{color:C[k]}}>{k==='excluded'?sum.excluded:k==='generation'?(generation.generation===null?'—':value(generation.generation)):sum.matched===0?'—':value(sum[k])}<small>{k==='excluded'?'分钟':unit}</small></div><p>{desc}{k==='generation'&&<span className="wind-generation-coverage">实发有效 {generation.generationObserved} 分钟{generation.generationMissing>0?' · 数据不完整':''}</span>}</p></DataComponent></SortableItem>)}</SortableRegion>
  <div className="wind-coverage"><span><i/>参与计算 <b>{sum.matched}</b> / {scoped.length} 分钟</span><span>有效时段正差额 <b>{value(sum.gap)} {unit}</b> = 两类限电 + 其他差额</span></div>
  {sum.excluded>0&&<div className="wind-notice"><Icon name="info"/><span>当前范围有 {sum.excluded} 分钟已排除；背景斜纹为不可计算时段，不计任何分类电量。具体原因见下方排除区间。</span></div>}
  <DataComponent id="wind-power" title="功率曲线与限电面积" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={scoped} variant="card" className="wind-chart-card">
