@@ -2,6 +2,11 @@ import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 export const localFile=fileURLToPath(new URL('../cloudflare/.dev.vars',import.meta.url));
+export const cloudflareFile=fileURLToPath(new URL('../cloudflare/.dev.vars.cloudflare-production',import.meta.url));
+export function readCloudflareSecrets(){
+ if(!existsSync(cloudflareFile))throw Error('本机未配置Cloudflare正式口令密钥；不能使用本地验收口令代替。');
+ return Object.fromEntries(readFileSync(cloudflareFile,'utf8').split(/\r?\n/).filter(x=>/^[A-Z_]+=/.test(x)).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),x.slice(i+1).trim()];}));
+}
 export function readLocalSecrets(){
  if(!existsSync(localFile))throw Error('请先运行 npm run access:init 生成本地验收密钥。');
  return Object.fromEntries(readFileSync(localFile,'utf8').split(/\r?\n/).filter(x=>/^[A-Z_]+=/.test(x)).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),x.slice(i+1).trim()];}));

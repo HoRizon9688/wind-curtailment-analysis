@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {launchProbe,ROOT} from '../browser/probe-browser.mjs';
-import {readLocalSecrets} from '../../deployment/access/local-secrets.mjs';
+import {readLocalSecrets,readCloudflareSecrets} from '../../deployment/access/local-secrets.mjs';
 import {dailyCode} from '../../deployment/access/core.mjs';
 import {oracle,oracleInput} from '../browser/python-oracle.mjs';
 import {compareResults} from '../browser/compare.mjs';
 const origin=process.argv[2]??'http://127.0.0.1:4191';
-assert.ok(['http://127.0.0.1:4191','http://127.0.0.1:4192'].includes(origin),'local acceptance only');
-const tag=new URL(origin).port,out=join(ROOT,'reports/browser-review/daily-access',tag);mkdirSync(out,{recursive:true});
-const code=await dailyCode(readLocalSecrets().DAILY_ACCESS_SECRET),wrong=String((Number(code)+1)%1000000).padStart(6,'0');
-const p=await launchProbe(null,'daily-access-'+tag,{remoteUrl:origin+'/?t0-harness&view=1&tab=dashboard',localWorkerPreview:true,ready:'!!document.querySelector("#access-form")'});
+const online=process.argv.includes('--online-cloudflare');
+assert.ok(online?origin==='https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev':['http://127.0.0.1:4191','http://127.0.0.1:4192'].includes(origin),'explicit acceptance target only');
+const tag=online?'cloudflare-production':new URL(origin).port,out=join(ROOT,'reports/browser-review/daily-access',tag);mkdirSync(out,{recursive:true});
+const code=await dailyCode((online?readCloudflareSecrets():readLocalSecrets()).DAILY_ACCESS_SECRET),wrong=String((Number(code)+1)%1000000).padStart(6,'0');
+const p=await launchProbe(null,'daily-access-'+tag,{remoteUrl:origin+'/?t0-harness&view=1&tab=dashboard',localWorkerPreview:!online,ready:'!!document.querySelector("#access-form")',readyTimeoutMs:online?60000:10000});
 const checks=[],delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(expr){for(let i=0;i<300;i++){if(await p.evaluate(expr))return;await delay(50);}throw Error('UI wait failed: '+expr+' '+JSON.stringify(await p.evaluate('({url:location.href,error:document.querySelector("#access-error")?.textContent,body:document.body.innerText.slice(-300)})')));}
 async function set(selector,value){await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(e.tagName==='SELECT'){e.value=${JSON.stringify(value)};}else Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);}

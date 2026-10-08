@@ -8,6 +8,7 @@
     "deploy": "wrangler deploy",
     "access:init": "node ../access/local-secrets.mjs",
     "access:code": "node ../access/access-code.mjs",
+    "access:code:cloudflare": "node ../access/access-code.mjs --cloudflare",
     "access:dev": "wrangler dev --config wrangler.access.jsonc --ip 127.0.0.1 --port 4191",
     "access:check": "wrangler deploy --dry-run --config wrangler.access.jsonc",
     "access:sites-build": "node ../access/build-sites.mjs"

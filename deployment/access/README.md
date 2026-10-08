@@ -1,6 +1,17 @@
-# 每日访问口令（本地验收版）
+# 每日访问口令
 
-分支：`codex/daily-access-token`。本轮没有部署、没有推送main、没有变更线上密钥或Sites访问策略。GitHub Pages保持公开，原始`docs`发布文件未变。
+分支：`codex/daily-access-token`，与无口令的`main`、`codex/browser-calculation`独立维护，不合并。GitHub Pages保持公开，原始`docs`发布文件未变。用户已验收并授权仅更新Cloudflare；Sites暂不更新，保留原访问策略。
+
+## Cloudflare 正式站点取码
+
+```powershell
+cd deployment/cloudflare
+npm run access:code:cloudflare
+```
+
+正式密钥独立保存在本机被Git忽略的`.dev.vars.cloudflare-production`，与本地验收密钥不同。该命令明确读取正式密钥，不会回退使用本地验收值。没有这个文件的电脑不能直接取正式口令；管理员应安全备份该文件，不通过Git、聊天或访客分享密钥。每日六位口令可以按需提供给访客。登录有效至北京时间次日00:00。
+
+正式入口：`https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev/?view=1&tab=dashboard`。退出入口：同一域名的`/auth/logout`。登录仅保护Cloudflare入口，公开GitHub Pages仍按用户要求提供原版本。
 
 ## 本机启动与取码
 
@@ -59,4 +70,4 @@ node tests/access/access-browser.mjs http://127.0.0.1:4192
 - 登录响应和受保护文件为private/no-store。登录/退出POST要求同源Origin。登录输入有长度、格式和次数限制，Cookie验签与日期检查在服务端完成。
 - 这保护两个线上入口；GitHub Pages与公开源码仍按用户要求可访问，不能承诺工具本身完全私有。GitHub Pages不添加前端密码框。
 
-完成验收前不提供自动发布命令。当前生产静态配置和部署脚本保留。
+原静态配置和部署脚本保留供无口令版本使用。每日口令版本必须明确选择`wrangler.access.jsonc`，并将独立生产Secrets与代码一起上传为新版本后发布；不能运行原静态`npm run deploy`覆盖正式鉴权入口。Sites构建候选仍仅本地，不自动部署。
