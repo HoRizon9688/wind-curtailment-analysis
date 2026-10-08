@@ -31,3 +31,9 @@
 本地演示入口：`http://127.0.0.1:4193/?view=1&tab=dashboard`。预览文件在被Git忽略的`reports/static-candidates/generation-reviewed-2026-10-08/site`，本机启动可使用`python -m http.server 4193 --bind 127.0.0.1 --directory reports/static-candidates/generation-reviewed-2026-10-08/site`。
 
 `docs`和Cloudflare配置没有变更。GitHub Pages、Cloudflare及Sites均保持原线上版本。
+
+## 同日布局修订：图表内日期切换
+
+按用户注释删除逐日图的“统一刻度上限”文字和原日期选择器旁的联动说明。日期选择器移入“功率曲线与限电面积”工具栏，置于时段快捷按钮左侧；窄屏自动分行。统一柱形比例、计算规则和已有交互保持不变。
+
+浏览器验证12项通过，包含日期切换后的指标更新、图表位置保留及1280/903/665/390px的控件布局；图表手势回归12项、多月份切换回归7项通过。源码构建及受保护边界检查通过。新预览目录为`reports/static-candidates/generation-date-reviewed-2026-10-08/site`，仍使用本机4193端口；不推送、不更新在线站点。
