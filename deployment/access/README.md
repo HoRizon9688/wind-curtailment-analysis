@@ -13,6 +13,8 @@ npm run access:code:cloudflare
 
 正式入口：`https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev/?view=1&tab=dashboard`。退出入口：同一域名的`/auth/logout`。登录仅保护Cloudflare入口，公开GitHub Pages仍按用户要求提供原版本。
 
+2026-10-08已发布，发布记录见`planning/cloudflare-daily-access-release-2026-10-08.md`；正式浏览器12项、HTTP7项核验通过。
+
 ## 本机启动与取码
 
 需要Node与已安装的`deployment/cloudflare`锁定依赖。PyCharm打开项目后，在Terminal执行：
@@ -59,6 +61,15 @@ node --test tests/access/access-http.test.mjs
 node tests/access/access-browser.mjs http://127.0.0.1:4191
 node tests/access/access-browser.mjs http://127.0.0.1:4192
 ```
+
+正式Cloudflare验收只在明确授权时执行：
+
+```powershell
+node tests/access/access-browser.mjs https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev --online-cloudflare
+node tests/access/cloudflare-http.mjs
+```
+
+上述正式验收使用本机生产密钥与合成样例，包含少量登录请求，会计入正常限流；不更改Sites。
 
 以上从项目根目录运行；HTTP/浏览器检查需要先启动两个本地预览。浏览器测试使用Chrome和Python参考实现，可设置`BROWSER_ORACLE_PYTHON`为本机Python绝对路径。真实文件不用于测试。截图和收据在`reports/browser-review/daily-access`。
 
