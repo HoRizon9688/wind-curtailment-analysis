@@ -1,6 +1,6 @@
 # 每日访问口令
 
-分支：`codex/daily-access-token`，与无口令的`main`、`codex/browser-calculation`独立维护，不合并。GitHub Pages保持公开，原始`docs`发布文件未变。用户已验收并授权仅更新Cloudflare；Sites暂不更新，保留原访问策略。
+分支：`codex/daily-access-token`，与无口令的`main`、`codex/browser-calculation`独立维护，不合并。GitHub Pages保持公开，仅同步共用主页和合成示例。Cloudflare与个人Sites均已使用每日口令；Sites保留原有仅本人可访问的平台权限。
 
 ## Cloudflare 正式站点取码
 
@@ -13,7 +13,9 @@ npm run access:code:cloudflare
 
 正式入口：`https://wind-curtailment-analysis.wind-curtailment-static-deployment.workers.dev/?view=1&tab=dashboard`。退出入口：同一域名的`/auth/logout`。登录仅保护Cloudflare入口，公开GitHub Pages仍按用户要求提供原版本。
 
-2026-10-08已发布，发布记录见`planning/cloudflare-daily-access-release-2026-10-08.md`；正式浏览器12项、HTTP7项核验通过。
+2026-10-08首次发布Cloudflare口令版，记录见`planning/cloudflare-daily-access-release-2026-10-08.md`。2026-10-13同步三站主页并发布Sites口令版，记录见`deployment/release-2026-10-13.md`。
+
+个人Sites入口：`https://wind-curtailment-analysis.jiatenghuipl.chatgpt.site/?view=1&tab=dashboard`。先通过原有ChatGPT平台准入，再输入每日口令。Sites与Cloudflare共用正式口令密钥，因此上述取码命令同时适用；Sites使用独立会话密钥和D1限流表，不共用Cookie。生产Secrets通过官方Sites工具配置，不写入manifest或源码。
 
 ## 本机启动与取码
 
@@ -51,7 +53,7 @@ node node_modules/wrangler/bin/wrangler.js dev --local --config wrangler.sites-l
 
 打开`http://127.0.0.1:4192/?view=1&tab=dashboard`，使用同一本地口令。`00000000-0000-0000-0000-000000000000`仅为本地模拟标识，不是线上数据库。**不得用这个配置运行远程迁移或部署。**
 
-Sites构建将经过SHA核对的合成HTML与两份样例嵌入独立Worker，不修改已编译的应用脚本、Data运行时或真实数据。候选在被忽略的`reports/access-sites-preview`，同时生成官方流程使用的逻辑D1绑定与`drizzle` schema-only迁移包。Sites线上接入需在用户批准后通过原项目官方流程转换为Worker、设置生产Secrets、绑定D1并应用迁移；保留owner-only权限，不创建新Site。官方本地打包器已检查该候选；生产环境的数据库绑定与迁移仍须在正式部署时校验。
+Sites构建将经过SHA核对的合成HTML与两份样例嵌入独立Worker，不修改已编译的应用脚本、Data运行时或真实数据。候选在被忽略的`reports/access-sites-preview`，同时生成官方流程使用的逻辑D1绑定与`drizzle` schema-only迁移包。2026-10-13已通过原项目官方流程转换为Worker，配置生产Secrets和D1并应用schema-only迁移；保留owner-only权限，没有创建新Site。线上登录已用于核验实际数据库绑定和迁移。
 
 ## 本地校验
 
@@ -69,7 +71,7 @@ node tests/access/access-browser.mjs https://wind-curtailment-analysis.wind-curt
 node tests/access/cloudflare-http.mjs
 ```
 
-上述正式验收使用本机生产密钥与合成样例，包含少量登录请求，会计入正常限流；不更改Sites。
+上述正式Cloudflare验收使用本机生产密钥与合成样例，包含少量登录请求，会计入正常限流；不更改Sites。Sites的官方私有访问凭据只能经隐藏标准输入传给检查程序，仅向该站点发送，不能放进命令参数或验收报告。
 
 以上从项目根目录运行；HTTP/浏览器检查需要先启动两个本地预览。浏览器测试使用Chrome和Python参考实现，可设置`BROWSER_ORACLE_PYTHON`为本机Python绝对路径。真实文件不用于测试。截图和收据在`reports/browser-review/daily-access`。
 
@@ -81,4 +83,4 @@ node tests/access/cloudflare-http.mjs
 - 登录响应和受保护文件为private/no-store。登录/退出POST要求同源Origin。登录输入有长度、格式和次数限制，Cookie验签与日期检查在服务端完成。
 - 这保护两个线上入口；GitHub Pages与公开源码仍按用户要求可访问，不能承诺工具本身完全私有。GitHub Pages不添加前端密码框。
 
-原静态配置和部署脚本保留供无口令版本使用。每日口令版本必须明确选择`wrangler.access.jsonc`，并将独立生产Secrets与代码一起上传为新版本后发布；不能运行原静态`npm run deploy`覆盖正式鉴权入口。Sites构建候选仍仅本地，不自动部署。
+原静态配置和部署脚本保留供无口令版本使用。每日口令版本必须明确选择`wrangler.access.jsonc`；更新主页时保留生产Secrets，首次发布或明确轮换时才设置新Secrets。不能运行原静态`npm run deploy`覆盖正式鉴权入口。Sites本机构建命令不自动部署，正式发布必须复用原项目、私有访问策略及官方源码同步/打包流程。
