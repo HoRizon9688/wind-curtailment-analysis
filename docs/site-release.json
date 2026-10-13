@@ -1,14 +1,14 @@
 {
   "format": "wind-static-public-release-v1",
-  "sourceRevision": "575f9cc82500bd6e8821da18ed193a253618f8e2",
+  "sourceRevision": "e592738bc486405ba55b9abef133dc446653b8aa",
   "synthetic": true,
   "standaloneSite": true,
   "algorithmRevision": "dispatch-confirmation-v2",
   "files": [
     {
       "path": "index.html",
-      "bytes": 5700054,
-      "sha256": "e111eca3cc27f3edb8eba4e2e00264a7ae62f940e0597c01b7ff3170b2666748"
+      "bytes": 5700951,
+      "sha256": "47b006938ce3518173ff0c9585c8adb05434ea00f88895ed34f5a506f790281a"
     },
     {
       "path": "samples/forecast.csv",
