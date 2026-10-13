@@ -29,7 +29,7 @@ python build_static_candidate.py --verify reports/static-candidates/new-release
 
 使用Workers Static Assets托管同一候选的site目录，外层Worker验证每日口令；不部署Python计算服务或文件上传接口。口令入口请求会先经过Worker，实际用量与费用规则以[官方计费说明](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)及控制台为准。
 
-独立的cloudflare目录锁定Wrangler4.147.0，不更改dashboard依赖。正式口令站点使用`wrangler.access.jsonc`并保留`run_worker_first:true`；明确将assets指向本次审核通过的候选site目录。新克隆需先构建候选，再部署。已有生产Secrets在更新时保留，不重新生成或上传本地验收密钥。
+在`codex/daily-access-token`分支维护正式口令入口。独立的cloudflare目录锁定Wrangler4.147.0，不更改dashboard依赖。正式口令站点使用`wrangler.access.jsonc`并保留`run_worker_first:true`；明确将assets指向本次审核通过的候选site目录。新克隆需先构建候选，再部署。已有生产Secrets在更新时保留，不重新生成或上传本地验收密钥。
 
 ```powershell
 cd deployment/cloudflare
