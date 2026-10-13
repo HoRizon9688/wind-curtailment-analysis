@@ -28,6 +28,9 @@
 .wind-generation-coverage{display:block;margin-top:5px;font-size:11px}
 .wind-daily-legend{margin:15px 0 8px;gap:10px 20px}
 .wind-daily-legend i{width:10px;height:10px;border-radius:2px}
+.wind-daily-legend button{border:0;background:transparent;font-size:12px;padding:6px 0;gap:6px;color:var(--secondary);min-height:44px;}
+.wind-daily-legend button.off{opacity:.55;text-decoration:none;}
+.wind-daily-legend button.off .wind-legend-label{text-decoration:line-through;}
 .wind-generation-note{margin-top:4px}
 @media(max-width:850px){.wind-kpis--generation{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.wind-kpis--generation .wind-metric-number{font-size:26px}.wind-kpis--generation .wind-metric{min-height:144px}}
 
