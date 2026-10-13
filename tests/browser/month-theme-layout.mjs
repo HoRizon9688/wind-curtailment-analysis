@@ -63,6 +63,9 @@ try{
  await click('.wind-month-switcher button[data-month="2026-01"]');assert.deepEqual(await dates(),['2026-01-01']);
  checks.push('paging begins strictly above 31 days and handles a one-day partial month');
  await upload(62);assert.equal((await dates()).length,31);
+ assert.equal(await p.evaluate('document.querySelector(".wind-daily-legend [data-energy-toggle=generation]").getAttribute("aria-pressed")'),'false');
+ await click('.wind-daily-legend [data-energy-toggle=generation]');assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=generation]").length'),31);
+ await click('.wind-daily-legend [data-energy-toggle=prediction]');assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=prediction]").length'),0);
  const beforeSwitch=await p.evaluate('window.__T0__.state()');
  await click('.wind-month-switcher button[data-month="2026-01"]');
  assert.ok((await dates()).every(d=>d.startsWith('2026-01')));assert.equal((await dates()).length,31);
@@ -70,6 +73,9 @@ try{
  assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-table tbody tr").length'),31);
  assert.equal(await p.evaluate('document.querySelector(\'.wind-month-switcher [aria-pressed="true"]\').dataset.month'),'2026-01');
  assert.deepEqual(await p.evaluate('window.__T0__.state()'),beforeSwitch);
+ assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=generation]").length'),31);
+ assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=prediction]").length'),0);
+ checks.push('daily energy visibility persists across month selection without altering analysis');
  checks.push('cross-year months filter only chart/table and preserve complete calculation totals');
  await set('.wind-day-selector select','2025-12-30');assert.ok((await dates()).every(d=>d.startsWith('2025-12')));
  await click('.wind-daily-bars>button:last-child');assert.equal(await p.evaluate('document.querySelector(".wind-day-selector select").value'),'2025-12-31');

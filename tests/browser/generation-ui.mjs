@@ -12,6 +12,7 @@ const p=await launchProbe(null,'generation-ui'+(remote?'-'+remote.hostname:''),{
 const checks=[],delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(expr){for(let i=0;i<350;i++){if(await p.evaluate(expr))return;await delay(40);}throw Error('UI timeout: '+expr);}
 async function set(selector,value){await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(e.tagName==='SELECT')e.value=${JSON.stringify(value)};else Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await delay(60);}
+async function toggleEnergy(kind){const selector=`.wind-daily-legend button[data-energy-toggle="${kind}"]`;await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);const r=await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);await p.call('Input.dispatchMouseEvent',{type:'mousePressed',...r,button:'left',buttons:1,clickCount:1},p.sessionId);await p.call('Input.dispatchMouseEvent',{type:'mouseReleased',...r,button:'left',clickCount:1},p.sessionId);await delay(60);}
 const number=()=>p.evaluate('Number(document.querySelector("[data-testid=total-generation]").childNodes[0].textContent.replaceAll(",",""))');
 const equal=(a,b)=>assert.ok(Math.abs(a-b)<.00051,`${a} != ${b}`);
 try{
@@ -29,6 +30,27 @@ try{
  assert.deepEqual(await p.evaluate('[...document.querySelectorAll(".wind-kpis--generation [data-testid]")].map(e=>e.dataset.testid)'),['total-dispatch','total-prediction','total-other','total-generation','total-excluded']);
  equal(await number(),daily['2026-01-01']);checks.push('new generation card before exclusions; independent CSV integral matches');
  assert.equal(await p.evaluate('document.querySelector("[data-component-id=wind-daily] .component-title-text")?.textContent ?? [...document.querySelectorAll(".component-title-text")].find(e=>e.textContent==="逐日电量分布情况")?.textContent'),'逐日电量分布情况');
+ assert.deepEqual(await p.evaluate('[...document.querySelectorAll(".wind-daily-legend button")].map(e=>[e.dataset.energyToggle,e.getAttribute("aria-pressed")])'),[['generation','false'],['dispatch','true'],['prediction','true'],['other','true']]);
+ assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=generation]").length'),0);
+ assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-legend .wind-visibility-state").length'),0);
+ assert.ok(await p.evaluate('(()=>{const b=document.querySelector(".wind-daily-legend button.off");return Number(getComputedStyle(b).opacity)<1 && getComputedStyle(b.querySelector(".wind-legend-label")).textDecorationLine.includes("line-through");})()'));
+ for(const width of [903,390]){await p.call('Emulation.setDeviceMetricsOverride',{width,height:760,deviceScaleFactor:1,mobile:false},p.sessionId);await p.evaluate('document.querySelector(".wind-daily-bars").closest(".dashboard-component").scrollIntoView({block:"start"})');await delay(80);const shot=await p.call('Page.captureScreenshot',{format:'png'},p.sessionId);writeFileSync(join(out,`daily-default-${width}.png`),Buffer.from(shot.data,'base64'));}
+ await p.call('Emulation.setDeviceMetricsOverride',{width:1280,height:760,deviceScaleFactor:1,mobile:false},p.sessionId);
+ const summaryBefore=await p.evaluate('window.__T0__.state().summary'),predictionHeight=await p.evaluate('document.querySelector(".wind-daily-stack [data-energy=prediction]").getBoundingClientRect().height');
+ await toggleEnergy('generation');equal(await number(),daily['2026-01-01']);
+ assert.ok(await p.evaluate('document.querySelector(".wind-daily-stack [data-energy=prediction]").getBoundingClientRect().height')<predictionHeight);
+ for(const kind of ['generation','dispatch','prediction','other']){await toggleEnergy(kind);assert.equal(await p.evaluate(`document.querySelectorAll('.wind-daily-stack [data-energy=${kind}]').length`),0);}
+ assert.ok(await p.evaluate('document.querySelector(".wind-daily-empty").textContent.includes("未显示任何电量")'));
+ assert.deepEqual(await p.evaluate('window.__T0__.state().summary'),summaryBefore);equal(await number(),daily['2026-01-01']);
+ for(const kind of ['generation','dispatch','prediction','other']){await toggleEnergy(kind);assert.equal(await p.evaluate(`document.querySelectorAll('.wind-daily-stack [data-energy=${kind}]').length`),2);}
+ await p.evaluate('document.querySelector(".wind-daily-legend button").focus()');
+ for(const type of ['keyDown','keyUp'])await p.call('Input.dispatchKeyEvent',{type,key:' ',code:'Space',windowsVirtualKeyCode:32},p.sessionId);
+ await delay(60);
+ assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=generation]").length'),0);
+ for(const type of ['keyDown','keyUp'])await p.call('Input.dispatchKeyEvent',{type,key:'Enter',code:'Enter',...(type==='keyDown'?{text:'\r'}:{}),windowsVirtualKeyCode:13},p.sessionId);
+ await delay(60);
+ assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=generation]").length'),2);
+ checks.push('generation hidden by default; four native legend buttons and keyboard toggle marks, rescale, empty state without changing metrics or analysis');
  const bars=await p.evaluate('[...document.querySelectorAll(".wind-daily-bars>button")].map(b=>({date:b.dataset.date,label:b.getAttribute("aria-label"),segments:[...b.querySelectorAll("[data-energy]")].map(s=>s.dataset.energy),height:parseFloat(b.querySelector("[data-energy=generation]").style.height)}))');
  assert.equal(bars.length,2);assert.deepEqual(bars[0].segments,['generation','dispatch','prediction','other']);for(const b of bars){assert.ok(b.label.includes('发电'));assert.ok(b.height>0);}checks.push('daily chart renamed and displays actual generation alongside the three losses');
  const rendered=await p.evaluate('[...document.querySelectorAll(".wind-daily-stack")].map(e=>[...e.children].map(s=>({kind:s.dataset.energy,height:s.style.height,pixels:s.getBoundingClientRect().height,top:s.getBoundingClientRect().top,bottom:s.getBoundingClientRect().bottom,color:getComputedStyle(s).backgroundColor})))');
@@ -50,6 +72,7 @@ try{
   await p.call('Emulation.setDeviceMetricsOverride',{width,height:760,deviceScaleFactor:1,mobile:false},p.sessionId);
   await p.evaluate('document.querySelector(".wind-kpis--generation").scrollIntoView({block:"center"})');await delay(80);
   assert.ok(await p.evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
+  assert.ok(await p.evaluate('[...document.querySelectorAll(".wind-daily-legend button")].every(e=>{const r=e.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth && r.height>=44;})'));
   if(width>=903){const tops=await p.evaluate('[...document.querySelectorAll(".wind-kpis--generation .wind-metric")].map(e=>e.getBoundingClientRect().top)');assert.ok(Math.max(...tops)-Math.min(...tops)<2);}
   assert.ok(await p.evaluate('[...document.querySelectorAll(".wind-kpis--generation .wind-metric-number")].every(e=>e.scrollWidth<=e.clientWidth+1)'));
   const shot=await p.call('Page.captureScreenshot',{format:'png'},p.sessionId);writeFileSync(join(out,`metrics-${width}.png`),Buffer.from(shot.data,'base64'));
@@ -69,6 +92,7 @@ try{
  await set('input[aria-label="场站名称"]','发电量合成验收');await set('input[aria-label="装机容量"]','56');await p.evaluate('document.querySelector(".wind-confirm input").click()');await wait('!document.querySelector(".wind-upload button[type=submit]").disabled');await p.evaluate('document.querySelector(".wind-upload button[type=submit]").click()');await wait('window.__T0__.state().stationName==="发电量合成验收"');equal(await number(),720);checks.push('native new-file upload computes generation from the new station, replacing demo');
  await set('.wind-day-selector select','2026-02-02');equal(await number(),714.5);assert.ok(await p.evaluate('document.querySelector(".wind-generation-coverage").textContent.includes("数据不完整")'));checks.push('actual missing minutes excluded from integral; negative auxiliary load does not reduce generation');
  await set('.wind-day-selector select','2026-02-03');equal(await number(),720);assert.ok(await p.evaluate('document.querySelector("[data-testid=total-dispatch]").textContent.includes("—")'));checks.push('forecast missing all day does not discard available actual generation');
+ await toggleEnergy('generation');assert.equal(await p.evaluate('document.querySelectorAll(".wind-daily-stack [data-energy=generation]").length'),0);equal(await number(),720);
  const downloads=mkdtempSync(join(out,'downloads-'));await p.call('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});await set('select[aria-label="导出内容"]','daily');await p.evaluate('document.querySelector(".wind-export-controls button").click()');let file;for(let i=0;i<150;i++){file=readdirSync(downloads).find(f=>f.endsWith('.csv'));if(file)break;await delay(30);}assert.ok(file);const exported=readFileSync(join(downloads,file),'utf8');assert.ok(exported.includes('发电量_MWh'));assert.ok(exported.includes('"714.5"'));checks.push('downloaded daily CSV includes measured generation and independent coverage');
  assert.deepEqual(p.browserErrors,[]);writeFileSync(join(out,'result.json'),JSON.stringify({passed:true,candidate,checks,demoGeneration:daily},null,2));console.log(`Generation UI: ${checks.length} checks passed`);
 }finally{await p.close();}
