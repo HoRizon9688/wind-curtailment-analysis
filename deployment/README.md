@@ -27,19 +27,23 @@ python build_static_candidate.py --verify reports/static-candidates/new-release
 
 ## Cloudflare
 
-使用Workers Static Assets托管同一候选的site目录，不部署Python计算服务、数据库或文件上传接口。静态资产请求免费且不另收资产存储费，规则以[官方计费说明](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)为准。
+使用Workers Static Assets托管同一候选的site目录，外层Worker验证每日口令；不部署Python计算服务或文件上传接口。口令入口请求会先经过Worker，实际用量与费用规则以[官方计费说明](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)及控制台为准。
 
-独立的cloudflare目录锁定Wrangler4.147.0，不更改dashboard依赖。先确认wrangler.jsonc中assets.directory指向本次审核通过的候选site目录；当前配置指向local-chart-layout-2026-10-07。新克隆尚无该候选，需要先以相同输出目录构建，或构建新的候选后更新目录。
+独立的cloudflare目录锁定Wrangler4.147.0，不更改dashboard依赖。正式口令站点使用`wrangler.access.jsonc`并保留`run_worker_first:true`；明确将assets指向本次审核通过的候选site目录。新克隆需先构建候选，再部署。已有生产Secrets在更新时保留，不重新生成或上传本地验收密钥。
 
 ```powershell
 cd deployment/cloudflare
 npm ci
 npm run login
 npm run whoami
-npm run check
-npm run deploy
+node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.access.jsonc --assets ../../reports/static-candidates/new-release/site --keep-vars --dry-run
+node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.access.jsonc --assets ../../reports/static-candidates/new-release/site --keep-vars
 ```
 
 在官方浏览器页面完成登录。若有多个账号，先明确目标账号并按Wrangler文档配置，不把令牌、密码或OAuth配置提交到Git。部署仅上传候选site中的三个公开文件，不上传审核ZIP、reports、真实数据或本机结果。
 
 更新后核对返回的workers.dev地址、部署版本和线上文件SHA，并用合成文件验证上传、导出、来源、刷新、曲线和阴影。真实数据只在本机回归；全年巨型导出和低内存设备暂不纳入验收。
+
+## 个人Sites
+
+复用原项目、原本人访问策略及官方Sites源码同步/打包流程。2026-10-13已发布每日口令Worker；与Cloudflare共用当天口令，会话密钥独立。D1仅用于短期登录计数，场站文件及结果仍只在浏览器内处理。详情见[本次发布记录](release-2026-10-13.md)与[口令分支文档](https://github.com/HoRizon9688/wind-curtailment-analysis/blob/codex/daily-access-token/deployment/access/README.md)。

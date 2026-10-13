@@ -16,7 +16,9 @@
 
 “当日发电量”按实发正功率逐分钟积分，缩放图表后显示当前范围的发电量。厂用电负值不扣减正向发电量，实发缺失或异常不补零；实发覆盖与限电分类覆盖分别统计。逐日电量图例支持鼠标和键盘切换四类电量，发电量默认隐藏；隐藏项变暗并划横线，不显示额外的状态提示框。图例仅影响绘图，指标、逐日明细和导出仍保留全部电量。日期选择器位于功率图工具栏，可直接切换日期。
 
-GitHub Pages公开访问；Cloudflare保留每日六位口令，登录后使用相同的主页及计算功能。
+GitHub Pages公开访问；Cloudflare保留每日六位口令。[个人 Sites](https://wind-curtailment-analysis.jiatenghuipl.chatgpt.site/?view=1&tab=dashboard) 同样使用每日口令，并保留原有仅本人可访问的平台权限。三个入口使用同一版主页和浏览器计算功能。
+
+Cloudflare与Sites共用当天口令，每日北京时间00:00更新；两站会话分别签名。管理员在项目的 `deployment/cloudflare` 目录运行 `npm run access:code:cloudflare` 获取当天口令，需要本机已有的生产密钥配置。密钥不随Git发布；部署和取码说明见[口令分支文档](https://github.com/HoRizon9688/wind-curtailment-analysis/blob/codex/daily-access-token/deployment/access/README.md)。
 
 支持CSV（UTF-8/BOM/GB18030）、XLSX及实际内容为OOXML的XLS。旧二进制XLS请另存为XLSX。一次分析支持1—366天，每类最多400文件，总上传大小不超过60MB。可先使用 [分钟功率合成样例](docs/samples/minute-power.csv) 和 [预测合成样例](docs/samples/forecast.csv)，容量56MW、日期2026-01-01至2026-01-02。
 
