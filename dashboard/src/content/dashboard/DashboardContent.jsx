@@ -1,4 +1,4 @@
-import React,{useState,useMemo,useRef,useEffect} from 'react';
+import React,{useState,useMemo,useRef,useEffect,useId} from 'react';
 import {DataComponent,SortableRegion,SortableItem,useDataApp} from '../../data-app-public.jsx';
 import {clock,filterRows,totals,bands,stepPath,hourly} from './wind-model.mjs';
 import {generationTotals} from './generation-model.mjs';
@@ -7,21 +7,24 @@ import './wind.css';
 import {UploadPanel,PeriodOverview,Exclusions} from './UploadPanel.jsx';
 import {exportAnalysis} from './analysis-exports.mjs';
 import {T0AnalysisHarness} from './analysis-session.jsx';
+import {analyzeOptimization,OPTIMIZATION_DEFAULTS} from './optimization-model.mjs';
+import {OptimizationPanel} from './OptimizationPanel.jsx';
 
-const C={a:'var(--wind-available)',p:'var(--wind-actual)',g:'var(--wind-agc)',f:'var(--wind-forecast)',theory:'var(--wind-theory)',dispatch:'var(--wind-dispatch)',prediction:'var(--wind-prediction)',other:'var(--wind-other)',generation:'var(--wind-generation)',missing:'var(--wind-missing)'};
+const C={a:'var(--wind-available)',p:'var(--wind-actual)',g:'var(--wind-agc)',f:'var(--wind-forecast)',theory:'var(--wind-theory)',dispatch:'var(--wind-dispatch)',prediction:'var(--wind-prediction)',other:'var(--wind-other)',generation:'var(--wind-generation)',missing:'var(--wind-missing)',optimization:'var(--wind-optimization)',oEstimate:'var(--wind-optimization)',dispatchRemaining:'var(--wind-dispatch)',optimizationPending:'var(--wind-optimization-pending)'};
 const L={a:'可用功率',p:'实发功率',g:'AGC 指令',f:'预测（线性插值）',theory:'理论功率',dispatch:'调度限电',prediction:'预测限电',other:'其他差额',missing:'已排除时段'};
 const fmt=(v,d=3)=>v==null?'—':v.toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
 function Icon({name,size=18}){const p={wind:'M3 8h12a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h6',download:'M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5',play:'m8 4 12 8-12 8Z',pause:'M8 5v14M16 5v14',reset:'M4 10a8 8 0 1 1 0 5M4 3v7h7',info:'M12 10v7M12 7h.01'};return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={p[name]||p.info}/></svg>;}
 function useWidth(){const ref=useRef(null),[width,setWidth]=useState(900);useEffect(()=>{const obs=new ResizeObserver(([e])=>setWidth(Math.max(200,e.contentRect.width)));if(ref.current)obs.observe(ref.current);return()=>obs.disconnect();},[]);return[ref,width];}
 
-function PowerChart({rows,range,selected,onSelect,onRange,visible,shades,capacity}){
+export function PowerChart({rows,range,selected,onSelect,onRange,visible,shades,capacity,analysisMode=false}){
+ const chartId=useId().replaceAll(':','');
  const [ref,w]=useWidth();const h=354,left=42,right=12,top=22,bottom=30;
- const max=capacity?capacity:Math.max(10,Math.ceil(Math.max(...rows.map(r=>Math.max(r.a,r.p,r.g,r.f??0,r.theory)))/5)*5);
+ const max=capacity?capacity:Math.max(10,Math.ceil(Math.max(...rows.map(r=>Math.max(r.a??0,r.p??0,r.g??0,r.f??0,r.theory??0,r.oEstimate??0)))/5)*5);
  const min=Math.min(0,...rows.map(r=>r.p??0));
  const x=m=>left+(m-range[0])/(range[1]-range[0])*(w-left-right),y=v=>h-bottom-(v-min)/(max-min)*(h-top-bottom);
  const drag=useRef(null),svgRef=useRef(null),viewport=useRef(null),[dragEnd,setDragEnd]=useState(null),[panning,setPanning]=useState(false);
  viewport.current={range,onRange,width:w};
- const geo=useMemo(()=>{const fill={dispatch:'',prediction:'',other:'',missing:''};for(const r of rows)for(const b of bands(r))fill[b.kind]+=`M${x(r.minute)},${y(b.top)}H${x(r.minute+1)}V${y(b.bottom)}H${x(r.minute)}Z`;return{fill,lines:Object.fromEntries(['a','p','g','f','theory'].map(k=>[k,stepPath(rows,k,x,y)]))};},[rows,range,w,max,min]);
+ const geo=useMemo(()=>{const fill={dispatch:'',prediction:'',other:'',missing:'',optimization:'',dispatchRemaining:'',optimizationPending:''};for(const r of rows)for(const b of (analysisMode?r.optimizationBands:bands(r)))fill[b.kind]+=`M${x(r.minute)},${y(b.top)}H${x(r.minute+1)}V${y(b.bottom)}H${x(r.minute)}Z`;return{fill,lines:Object.fromEntries(['a','p','g','f','theory',...(analysisMode?['oEstimate']:[])].map(k=>[k,stepPath(rows,k,x,y)]))};},[rows,range,w,max,min,analysisMode]);
  const position=(clientX,svg,width)=>{const rect=svg.getBoundingClientRect();return Math.max(0,Math.min(1,((clientX-rect.left)/rect.width*width-left)/(width-left-right)));};
  const locate=e=>Math.max(range[0],Math.min(range[1]-1,Math.floor(range[0]+position(e.clientX,e.currentTarget,w)*(range[1]-range[0]))));
  useEffect(()=>{
@@ -42,7 +45,7 @@ function PowerChart({rows,range,selected,onSelect,onRange,visible,shades,capacit
   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
  }
  const tickCount=w<500?4:7;
- return <div ref={ref} className="wind-plot"><svg ref={svgRef} className={`wind-power-svg${panning?' is-panning':''}`} data-testid="power-chart" viewBox={`0 0 ${w} ${h}`} tabIndex={0} role="application" aria-label="功率曲线。按住鼠标拖动平移，滚轮围绕鼠标位置缩放；Shift加拖动可框选。左右方向键逐分钟查看，Shift加方向键移动15分钟。"
+ return <div ref={ref} className="wind-plot"><svg ref={svgRef} className={`wind-power-svg${panning?' is-panning':''}`} data-testid={analysisMode?'optimization-chart':'power-chart'} viewBox={`0 0 ${w} ${h}`} tabIndex={0} role="application" aria-label={`${analysisMode?'发电能力优化场景曲线与估算阴影。':'功率曲线。'}按住鼠标拖动平移，滚轮围绕鼠标位置缩放；Shift加拖动可框选。左右方向键逐分钟查看，Shift加方向键移动15分钟。`}
  onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const n=e.key==='Home'?range[0]:e.key==='End'?range[1]-1:selected+(e.key==='ArrowLeft'?-1:1)*(e.shiftKey?15:1);onSelect(Math.max(range[0],Math.min(range[1]-1,n)));}}}
  onPointerDown={e=>{if(e.button!==0||e.isPrimary===false)return;const rect=e.currentTarget.getBoundingClientRect(),minute=locate(e);drag.current={minute,range:[...range],clientX:e.clientX,clientY:e.clientY,width:rect.width*(w-left-right)/w,mode:e.shiftKey?'select':'pan',pointerId:e.pointerId,moved:false};setPanning(!e.shiftKey);if(e.shiftKey)setDragEnd(minute);if(e.pointerType==='mouse')e.currentTarget.focus({preventScroll:true});e.currentTarget.setPointerCapture(e.pointerId);onSelect(minute);}}
  onPointerMove={e=>{
@@ -57,14 +60,14 @@ function PowerChart({rows,range,selected,onSelect,onRange,visible,shades,capacit
  onPointerUp={e=>{const gesture=drag.current;if(gesture&&gesture.pointerId===e.pointerId&&gesture.mode==='select'){const m=locate(e);if(gesture.moved&&Math.abs(m-gesture.minute)>=15)onRange([Math.min(m,gesture.minute),Math.min(1440,Math.max(m,gesture.minute)+1)]);}finishGesture(e);}}
  onPointerCancel={finishGesture}
  onLostPointerCapture={()=>{drag.current=null;setDragEnd(null);setPanning(false);}}>
- <defs><pattern id="wind-hatch-missing" width="7" height="7" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 7L7 0M6 8L8 6" stroke="var(--wind-missing)" opacity=".65"/></pattern><pattern id="wind-hatch-other" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="var(--wind-other)" opacity=".22"/></pattern><clipPath id="wind-clip"><rect x={left} y={top-1} width={w-left-right} height={h-top-bottom+1}/></clipPath></defs>
+ <defs><pattern id={`${chartId}-missing`} width="7" height="7" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 7L7 0M6 8L8 6" stroke="var(--wind-missing)" opacity=".65"/></pattern><pattern id={`${chartId}-other`} width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="var(--wind-other)" opacity=".22"/></pattern><pattern id={`${chartId}-pending`} width="7" height="7" patternUnits="userSpaceOnUse"><path d="M0 7L7 0" stroke="var(--wind-optimization-pending)" opacity=".75"/></pattern><clipPath id={`${chartId}-clip`}><rect x={left} y={top-1} width={w-left-right} height={h-top-bottom+1}/></clipPath></defs>
  <text x="2" y="12" className="wind-tick">MW</text>
  {Array.from({length:6},(_,i)=>min+(max-min)*i/5).map(v=><g key={v}><line x1={left} x2={w-right} y1={y(v)} y2={y(v)} className="wind-grid"/><text x={left-9} y={y(v)+4} textAnchor="end" className="wind-tick">{fmt(v,min<0?1:0)}</text></g>)}
  {Array.from({length:tickCount},(_,i)=>Math.round(range[0]+(range[1]-range[0])*i/(tickCount-1))).map(m=><g key={m}><line x1={x(m)} x2={x(m)} y1={top} y2={h-bottom} className="wind-grid vertical"/><text x={x(m)} y={h-7} textAnchor={m===range[0]?'start':m===range[1]?'end':'middle'} className="wind-tick">{clock(m)}</text></g>)}
- <g clipPath="url(#wind-clip)">
- {rows.filter(r=>r.included===false||r.f===null).map(r=><rect key={r.minute} x={x(r.minute)} y={top} width={x(r.minute+1)-x(r.minute)} height={h-top-bottom} fill="url(#wind-hatch-missing)" opacity=".4"/>)}
- {['other','prediction','dispatch','missing'].map(k=>shades[k]&&<g key={k} data-area={k}><path d={geo.fill[k]} fill={k==='missing'?'url(#wind-hatch-missing)':C[k]} fillOpacity={k==='missing'?1:k==='other'?.16:.33}/>{k==='other'&&<path d={geo.fill[k]} fill="url(#wind-hatch-other)"/>}</g>)}
- {['theory','a','f','g','p'].map(k=>visible[k]&&<path key={k} data-curve={k} d={geo.lines[k]} fill="none" stroke={C[k]} strokeWidth={k==='p'?1.8:1.4} strokeDasharray={k==='g'?'5 3':k==='f'?'8 4':k==='theory'?'2 4':undefined} vectorEffect="non-scaling-stroke"/>)}
+ <g clipPath={`url(#${chartId}-clip)`}>
+ {rows.filter(r=>r.included===false||r.f===null).map(r=><rect key={r.minute} x={x(r.minute)} y={top} width={x(r.minute+1)-x(r.minute)} height={h-top-bottom} fill={`url(#${chartId}-missing)`} opacity=".4"/>)}
+ {(analysisMode?['dispatchRemaining','optimization','optimizationPending']:['other','prediction','dispatch','missing']).map(k=>shades[k]&&<g key={k} data-area={k}><path d={geo.fill[k]} fill={k==='missing'?`url(#${chartId}-missing)`:k==='optimizationPending'?`url(#${chartId}-pending)`:C[k]} fillOpacity={k==='missing'||k==='optimizationPending'?1:k==='other'?.16:.33}/>{k==='other'&&<path d={geo.fill[k]} fill={`url(#${chartId}-other)`}/>}</g>)}
+ {['theory','a','f','g','p',...(analysisMode?['oEstimate']:[])].map(k=>visible[k]&&<path key={k} data-curve={k} d={geo.lines[k]} fill="none" stroke={C[k]} strokeWidth={k==='p'?1.8:1.4} strokeDasharray={k==='g'?'5 3':k==='f'?'8 4':k==='oEstimate'?'3 3':k==='theory'?'2 4':undefined} vectorEffect="non-scaling-stroke"/>)}
  {selected>=range[0]&&selected<range[1]&&<line x1={x(selected+.5)} x2={x(selected+.5)} y1={top} y2={h-bottom} className="wind-crosshair"/>}
  {dragEnd!==null&&drag.current?.mode==='select'&&<rect x={x(Math.min(dragEnd,drag.current.minute))} y={top} width={Math.abs(x(dragEnd)-x(drag.current.minute))} height={h-top-bottom} fill="var(--accent)" opacity=".15"/>}
  </g></svg></div>;
@@ -74,13 +77,15 @@ function Minute({row,onPrevious,onNext,range}){return <aside className="wind-min
 
 function HourChart({rows,range,onRange}){const bins=hourly(rows),max=Math.max(1,...bins.map(b=>b.gap));const[active,setActive]=useState(null);useEffect(()=>setActive(null),[rows]);return <><div className="wind-hour-chart"><div className="wind-hour-axis"><span>{fmt(max,1)} MWh</span><span>0</span></div><div className="wind-bars">{bins.map(b=><button key={b.hour} className="wind-hour" onMouseEnter={()=>setActive(b)} onFocus={()=>setActive(b)} aria-pressed={range[0]===b.hour*60&&range[1]===(b.hour+1)*60} onClick={()=>onRange(range[0]===b.hour*60&&range[1]===(b.hour+1)*60?[0,1440]:[b.hour*60,(b.hour+1)*60])} aria-label={`${clock(b.hour*60)}，调度${fmt(b.dispatch)}，预测${fmt(b.prediction)}，待核实${fmt(b.other)} MWh，${range[0]===b.hour*60&&range[1]===(b.hour+1)*60?'再次点击恢复全天':'点击查看此小时'}`}><div className="wind-hour-stack">{['dispatch','prediction','other'].map(k=><span key={k} style={{height:`${b[k]/max*100}%`,background:C[k]}}/>)}</div><span className="wind-hour-label">{String(b.hour).padStart(2,'0')}</span></button>)}</div></div><div className="wind-hour-readout" aria-live="polite">{active?`${clock(active.hour*60)}—${clock((active.hour+1)*60)}　调度 ${fmt(active.dispatch)} · 预测 ${fmt(active.prediction)} · 待核实 ${fmt(active.other)} MWh`:'按所选范围内的分钟电量汇总；点击柱形放大到该小时，再次点击恢复全天。'}</div><div className="wind-small-legend">{['dispatch','prediction','other'].map(k=><span key={k}><i style={{background:C[k]}}/>{L[k]}</span>)}</div></>;}
 
-function DailyDashboard({all,meta,date,dates,onDate,preferences,setPreferences}){
+function DailyDashboard({all,meta,date,dates,onDate,preferences,setPreferences,optimization,optimizationConfig,onOptimizationConfig}){
  const[range,setRange]=useState([0,1440]),[selected,setSelected]=useState(720),[playing,setPlaying]=useState(false),[reduced,setReduced]=useState(false),[page,setPage]=useState(0);
  const {unit,visible,shades,capacity}=preferences;
  const setPreference=(key,value)=>setPreferences(p=>({...p,[key]:typeof value==='function'?value(p[key]):value}));
  const setUnit=v=>setPreference('unit',v),setVisible=v=>setPreference('visible',v),setShades=v=>setPreference('shades',v),setCapacity=v=>setPreference('capacity',v);
  const scoped=useMemo(()=>filterRows(all,range),[all,range]),sum=useMemo(()=>totals(scoped),[scoped]),row=all.find(r=>r.minute===selected)||scoped[0];
  const generation=useMemo(()=>generationTotals(scoped,meta.capacity),[scoped,meta.capacity]);
+ const optimizationDay=useMemo(()=>optimization.rows.filter(r=>r.date===date),[optimization,date]);
+ const optimizationScoped=useMemo(()=>filterRows(optimizationDay,range),[optimizationDay,range]);
  function updateRange(next){setRange(next);setSelected(m=>Math.max(next[0],Math.min(next[1]-1,m)));setPage(0);setPlaying(false);}
  useEffect(()=>{const media=window.matchMedia('(prefers-reduced-motion: reduce)');const change=()=>{setReduced(media.matches);if(media.matches)setPlaying(false);};change();media.addEventListener('change',change);const hide=()=>{if(document.hidden)setPlaying(false);};document.addEventListener('visibilitychange',hide);return()=>{media.removeEventListener('change',change);document.removeEventListener('visibilitychange',hide);};},[]);
  useEffect(()=>{if(!playing)return;const timer=setInterval(()=>setSelected(m=>Math.min(range[1]-1,m+5)),160);return()=>clearInterval(timer);},[playing,range]);
@@ -100,6 +105,7 @@ function DailyDashboard({all,meta,date,dates,onDate,preferences,setPreferences})
  <div className="wind-chart-grid"><div className="wind-chart-main"><PowerChart rows={scoped} range={range} selected={selected} onSelect={m=>{setSelected(m);setPlaying(false);}} onRange={updateRange} visible={visible} shades={shades} capacity={capacity?meta.capacity:0}/><div className="wind-area-legend">{['dispatch','prediction','other'].map(k=><button key={k} aria-pressed={shades[k]} className={shades[k]?'':'off'} onClick={()=>setShades(v=>({...v,[k]:!v[k]}))}><span style={{background:C[k]}}/>{L[k]}面积</button>)}<span>面积 = 功率差 × 时间</span></div></div><Minute row={row} range={range} onPrevious={()=>{setSelected(m=>Math.max(range[0],m-1));setPlaying(false);}} onNext={()=>{setSelected(m=>Math.min(range[1]-1,m+1));setPlaying(false);}}/></div>
  <div className="wind-range-controls"><label>起点 <b>{clock(range[0])}</b><input aria-label="范围起点" type="range" min="0" max="1425" step="1" value={range[0]} onChange={e=>updateRange([Math.min(Number(e.target.value),range[1]-15),range[1]])}/></label><label>终点 <b>{clock(range[1])}</b><input aria-label="范围终点" type="range" min="15" max="1440" step="1" value={range[1]} onChange={e=>updateRange([range[0],Math.max(Number(e.target.value),range[0]+15)])}/></label><span>按住拖动平移 · 滚轮缩放 · Shift 拖动框选</span></div>
  </DataComponent>
+ <OptimizationPanel model={optimization} rows={optimizationDay} scoped={optimizationScoped} range={range} selected={selected} onSelect={setSelected} onRange={updateRange} Chart={PowerChart} config={optimizationConfig} onConfig={onOptimizationConfig} meta={meta} date={date} dates={dates} onDate={onDate} unit={unit}/>
  <div className="wind-secondary-grid"><DataComponent id="wind-hours" title="限电量的小时分布" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={hourly(scoped)} variant="card"><HourChart rows={scoped} range={range} onRange={updateRange}/></DataComponent><DataComponent id="wind-pending" title="其他差额细分（不计入两类限电）" queryId="wind_minutes" kind="custom" sourceRows={scoped} displayRows={scoped} variant="card"><div className="wind-pending-total"><b>{sum.matched?value(sum.other):'—'}</b><span>{unit}</span></div>{[
  ['operationalBelow','场站指令以下未发','低于 min(可用,AGC)，差额超过容量的 0.5%。'],
  ['unexplainedAbove','指令以上待核实','含调度进入确认前的差额，以及 AGC 明显高于预测且不符合 2% 下限跟随的差额。'],
@@ -117,6 +123,10 @@ export function DashboardContent(){
  const all=snapshot.queries.wind_minutes.rows;
  const report=snapshot.wind;
  const revision=report?.revision??report?.meta;
+ const [optimizationState,setOptimizationState]=useState(()=>({revision,config:{...OPTIMIZATION_DEFAULTS,enabled:report?.meta?.optimizationAssumptionsConfirmed===true}}));
+ const optimizationConfig=useMemo(()=>optimizationState.revision===revision?optimizationState.config:{...OPTIMIZATION_DEFAULTS,enabled:false},[optimizationState,revision]);
+ const setOptimizationConfig=config=>setOptimizationState({revision,config});
+ const optimization=useMemo(()=>analyzeOptimization(all,report?.meta?.capacity??56,optimizationConfig),[all,report?.meta?.capacity,optimizationConfig]);
  const [selection,setSelection]=useState({revision:null,date:''});
  const [preferences,setPreferences]=useState({unit:'MWh',visible:{a:true,p:true,g:true,f:true,theory:false},shades:{dispatch:true,prediction:true,other:true,missing:true},capacity:false});
  const selectedDate=selection.revision===revision?selection.date:'';
@@ -134,7 +144,7 @@ export function DashboardContent(){
   <UploadPanel hasResults={ready}/>
   {ready?<>
    <PeriodOverview report={report} rows={all} date={date} onDate={setDate}/>
-   {day.length>0&&<DailyDashboard key={`${report.revision??report.meta.start}-${date}`} all={day} meta={report.meta} date={date} dates={dates} onDate={setDate} preferences={preferences} setPreferences={setPreferences}/>}
+   {day.length>0&&<DailyDashboard key={`${report.revision??report.meta.start}-${date}`} all={day} meta={report.meta} date={date} dates={dates} onDate={setDate} preferences={preferences} setPreferences={setPreferences} optimization={optimization} optimizationConfig={optimizationConfig} onOptimizationConfig={setOptimizationConfig}/>}
    <Exclusions gaps={report.gaps} excluded={report.summary.excluded} onDate={setDate} report={report} rows={all}/>
   </>:<section className="wind-empty"><h2>上传数据，开始一次场站分析</h2><p>选择一分钟功率表与对应的“数据下载”预测表，即可生成两类限电量、逐日统计与分钟曲线。</p><p>每次分析一个场站。计算沿用第二点目标时刻与线性插值规则，缺失区间会自动排除并列明。</p></section>}
  </div>;
