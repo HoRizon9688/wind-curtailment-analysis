@@ -9,19 +9,37 @@ import {ThresholdAllocator} from '../../dashboard/src/content/calculation/thresh
 import {parseTime,formatTime,MINUTE_MS} from '../../dashboard/src/content/calculation/time.mjs';
 
 const start=parseTime('2026-10-13'),rows=[],alloc=new ThresholdAllocator(100);
-const f=q=>25+q*.007,r=q=>q>=120&&q<180?.3:q===180?.15:0,g=q=>f(q)*(1-r(q));
-for(let m=0;m<300;m++){
+const f=q=>25+q*.007,r=q=>q>=120&&q<180||q>=420&&q<480?.3:q===180||q===480?.15:0,g=q=>f(q)*(1-r(q));
+for(let m=0;m<720;m++){
  const q=Math.floor(m/15)*15,w=(m-q)/15,F=f(q)*(1-w)+f(q+15)*w,G=g(q)*(1-w)+g(q+15)*w;
- const P=[75,90].includes(m)?G*.8:G-.1,timestamp=formatTime(start+m*MINUTE_MS),a=90+m*.0001;
+ const P=[75,90,375,390].includes(m)?G*.8:G-.1,timestamp=formatTime(start+m*MINUTE_MS),a=90+m*.0001;
  rows.push({timestamp,date:timestamp.slice(0,10),time:timestamp.slice(11,16),minute:m,a,theory:a+.1,f:F,g:G,p:P,included:true,...alloc.calculate(a,F,G,P)});
 }
 const model=analyzeOptimization(rows,100,{enabled:true,cycle:'point',nodeLagMinutes:0});
-const props={model,rows:model.rows,scoped:model.rows,range:[0,300],selected:130,onSelect:()=>{},onRange:()=>{},Chart:PowerChart,config:model.config,onConfig:()=>{},meta:{capacity:100,stationName:'合成组件核验'},date:'2026-10-13',dates:['2026-10-13'],onDate:()=>{},unit:'MWh'};
+const props={model,rows:model.rows,scoped:model.rows.filter(r=>r.minute<300),range:[0,300],selected:130,onSelect:()=>{},onRange:()=>{},Chart:PowerChart,config:model.config,onConfig:()=>{},meta:{capacity:100,stationName:'合成组件核验'},date:'2026-10-13',dates:['2026-10-13'],onDate:()=>{},unit:'MWh'};
 const markup=renderToStaticMarkup(<OptimizationPanel {...props}/>);
 assert.ok(markup.includes('发电能力优化场景分析'));
 assert.ok(markup.includes('场景 5 / 6 候选'));
 assert.ok(markup.includes('data-testid="optimization-estimate"'));
 assert.ok(markup.includes('data-testid="optimization-chart"'));
+assert.ok(markup.includes('AGC压低对应的调度限电量'));
+assert.ok(markup.includes('尚未归入能力优化的调度限电量'));
+assert.ok(markup.includes('再次点击恢复放大前范围'));
+assert.equal(model.events.filter(e=>e.status==='matched').length,2);
+const cardIds=html=>[...html.matchAll(/data-event-id="([^"]+)"/g)].map(m=>m[1]);
+const expectedIds=model.events.map(e=>e.id);
+assert.deepEqual(cardIds(markup),expectedIds,'day cards must include the second event outside the current chart range');
+const later=renderToStaticMarkup(<OptimizationPanel {...props} range={[405,495]} scoped={model.rows.filter(r=>r.minute>=405&&r.minute<495)}/>);
+assert.deepEqual(cardIds(later),expectedIds,'zooming to the second event must preserve card order');
+assert.ok(later.includes('当日事件'));
+const pendingModel=analyzeOptimization(rows.map(r=>[75,90].includes(r.minute)?{...r,p:r.g-.1}:r),100,{enabled:true,cycle:'point',nodeLagMinutes:0});
+const pendingMarkup=renderToStaticMarkup(<OptimizationPanel {...props} model={pendingModel} rows={pendingModel.rows} scoped={pendingModel.rows}/>);
+assert.ok(pendingMarkup.includes('前两个触发周期的执行偏差分别为'));
+assert.ok(pendingMarkup.includes('没有连续两个周期都超过10%'));
+assert.ok(!pendingMarkup.includes('触发周期1'));
+assert.ok(!pendingMarkup.includes('恢复核查：'));
+assert.ok(!pendingMarkup.includes('幅度核查：'));
+assert.ok(pendingMarkup.includes('涉及调度限电量'));
 assert.ok(/data-area="optimization"><path d="M[^\"]+"/.test(markup));
 assert.ok(/data-curve="oEstimate" d="M[^\"]+"/.test(markup));
 assert.ok(!markup.includes('NaN')&&!markup.includes('Infinity'));

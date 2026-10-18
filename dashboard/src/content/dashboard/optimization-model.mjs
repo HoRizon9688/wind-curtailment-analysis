@@ -11,12 +11,13 @@ export const OPTIMIZATION_SCENARIOS=Object.freeze([
 ]);
 export const OPTIMIZATION_DEFAULTS=Object.freeze({enabled:false,cycle:'mean',delayMinutes:30,nodeLagMinutes:1,
  fitTolerance:.02,recoveryToleranceRatio:.01,start:'2026-10-10',end:'2026-12-10'});
+export const OPTIMIZATION_RESIDUAL_LIMITS=Object.freeze({energyRatio:.05,powerRatio:.005});
 const finite=x=>typeof x==='number'&&Number.isFinite(x);
 const median=xs=>{const a=[...xs].sort((a,b)=>a-b);return (a[Math.floor((a.length-1)/2)]+a[Math.ceil((a.length-1)/2)])/2;};
 const mean=xs=>xs.reduce((a,b)=>a+b,0)/xs.length;
 const positive=x=>Math.max(0,x);
 const stamp=t=>formatTime(t);
-const zeroRow=r=>({...r,optimization:0,optimizationUpper:0,dispatchRemaining:r.dispatch??0,
+const zeroRow=r=>({...r,optimization:0,optimizationUpper:0,optimizationModel:0,optimizationModelUpper:0,optimizationToleranceAllocation:0,dispatchRemaining:r.dispatch??0,
  optimizationEvent:null,optimizationStatus:null,optimizationScenarios:'',oEstimate:null,
  optimizationBands:r.included!==false&&r.dispatch>0?[{kind:'dispatchRemaining',bottom:Math.max(r.g,r.p),top:Math.min(r.a,r.f)}]:[]});
 function settings(options,capacity){
@@ -35,8 +36,8 @@ function frozenRuns(rows,times){
 }
 function modelFactors(alpha,gamma,r){return [...Array(alpha).fill(r),...(gamma===2?[r/2,0]:[0])];}
 function summarize(rows,events){
- const s={originalDispatch:0,optimization:0,optimizationUpper:0,dispatchRemaining:0,matchedEvents:0,unresolvedEvents:0};
- for(const r of rows){s.originalDispatch+=r.dispatch??0;s.optimization+=r.optimization;s.optimizationUpper+=r.optimizationUpper;s.dispatchRemaining+=r.dispatchRemaining;}
+ const s={originalDispatch:0,optimization:0,optimizationUpper:0,optimizationToleranceAllocation:0,dispatchRemaining:0,matchedEvents:0,unresolvedEvents:0};
+ for(const r of rows){s.originalDispatch+=r.dispatch??0;s.optimization+=r.optimization;s.optimizationUpper+=r.optimizationUpper;s.optimizationToleranceAllocation+=r.optimizationToleranceAllocation;s.dispatchRemaining+=r.dispatchRemaining;}
  for(const e of events)s[e.status==='matched'?'matchedEvents':'unresolvedEvents']++;
  return s;
 }
@@ -77,27 +78,39 @@ export function analyzeOptimization(input,capacity,options={}){
    let continuous=true;for(let m=start;m<end;m+=M)if(!usable(lookup.get(m),m)){continuous=false;break;}
    if(!continuous)continue;
    const pair=[cycle(t-(config.delayMinutes+15)*M),cycle(t-config.delayMinutes*M)],fits=[],reasons=[];
+   const applicable=OPTIMIZATION_SCENARIOS.filter(s=>s.alpha===alpha&&s.gamma===gamma),triggerH=applicable.length?Math.min(...applicable.map(s=>s.h)):.10;
    if(pair.some(p=>!p))reasons.push('前两个触发周期数据不足');
-   else if(pair.some(p=>p.g<=capacity*.10||p.deficit<=.10))reasons.push('前两个周期未同时满足10%触发筛选');
-   const recovery=[];
+   else{
+    if(pair.some(p=>p.g<=capacity*.10))reasons.push('前两个周期AGC未同时超过装机容量的10%');
+    if(pair.some(p=>p.deficit<=triggerH))reasons.push(`前两个周期执行偏差未同时超过${triggerH*100}%触发门槛`);
+   }
+   const recovery=[];let recoveryBest=null;
    for(let i=0;i<alpha-1;i++){
     const last=t+(i+1)*Q;
     if(last>t+alpha*Q-config.delayMinutes*M)continue;
     const p=cycle(last-Q),q=cycle(last);
-    if(p&&q&&[p,q].every(z=>Math.abs(z.g-z.p)<=capacity*config.recoveryToleranceRatio))recovery.push([p.time,q.time]);
+    if(p&&q){
+     const gaps=[p,q].map(z=>Math.abs(z.g-z.p)),maxGapMW=Math.max(...gaps);
+     if(!recoveryBest||maxGapMW<recoveryBest.maxGapMW)recoveryBest={times:[p.time,q.time],gaps,maxGapMW};
+     if(maxGapMW<=capacity*config.recoveryToleranceRatio)recovery.push([p.time,q.time]);
+    }
    }
    if(!recovery.length)reasons.push('恢复前未找到连续两周期执行到位（当前容差）');
-   for(const s of OPTIMIZATION_SCENARIOS.filter(s=>s.alpha===alpha&&s.gamma===gamma)){
-    if(pair.some(p=>!p||p.g<=capacity*.10||p.deficit<=s.h)||!recovery.length)continue;
+   const modelChecks=[];
+   for(const s of applicable){
+    if(pair.some(p=>!p))continue;
     const reduction=s.beta*mean(pair.map(p=>p.deficit));if(!(reduction>=0&&reduction<=1))continue;
     const factors=modelFactors(alpha,gamma,reduction);
     const residuals=ns.map((z,i)=>Math.max(capacity*.02,z.f*(1-factors[i]))-z.g);
     const maxError=Math.max(...residuals.map((e,i)=>Math.abs(e)/ns[i].f));
-    if(maxError<=config.fitTolerance)fits.push({...s,reduction,maxError,rmseMW:Math.sqrt(mean(residuals.map(e=>e*e)))});
+    const check={...s,reduction,maxError,rmseMW:Math.sqrt(mean(residuals.map(e=>e*e))),triggerPassed:pair.every(p=>p.g>capacity*.10&&p.deficit>s.h),recoveryPassed:Boolean(recovery.length)};
+    modelChecks.push(check);
+    if(check.triggerPassed&&check.recoveryPassed&&maxError<=config.fitTolerance)fits.push(check);
    }
    if(alpha>5)reasons.push('长平台可能连续触发，无法唯一确定α');
+   if(modelChecks.length&&modelChecks.every(c=>c.maxError>config.fitTolerance))reasons.push('压减幅度与同形态场景参数不吻合');
    if(!fits.length&&!reasons.length)reasons.push('压减幅度与七组参数不吻合');
-   candidates.push({target:t,start,end,alpha,gamma,reduction:r,shapeError,nodes:ns,pair,fits,recovery,reasons});
+   candidates.push({target:t,start,end,alpha,gamma,reduction:r,shapeError,nodes:ns,pair,fits,recovery,recoveryBest,modelChecks,reasons});
   }
  }
  // Group competing shapes before allocation, retaining ALL compatible alpha /
@@ -119,8 +132,8 @@ export function analyzeOptimization(input,capacity,options={}){
    alpha:matched?alternatives(models.map(m=>m.alpha)):c.alpha,gamma:matched?alternatives(models.map(m=>m.gamma)):c.gamma,
    reduction:c.reduction,shapeError:c.shapeError,status:matched?'matched':'unresolved',
    scenarios:[...new Set(models.map(s=>s.id))].sort((a,b)=>a-b),models,
-   triggerCycles:c.pair,recoveryPairs:c.recovery,reasons:matched?[]:[...new Set(group.members.flatMap(m=>m.reasons))],
-   optimization:0,optimizationUpper:0,originalDispatch:0,previousReduction:nodes.get(c.target-Q)?.reduction??null};
+   triggerCycles:c.pair,recoveryPairs:c.recovery,recoveryBest:c.recoveryBest,modelChecks:c.modelChecks,reasons:matched?[]:[...new Set(group.members.flatMap(m=>m.reasons))],
+   optimization:0,optimizationUpper:0,originalDispatch:0,toleranceMerged:false,toleranceAllocation:0,residualRatioBeforeMerge:0,maxResidualMW:0,previousReduction:nodes.get(c.target-Q)?.reduction??null};
  });
  function optimizedAt(c,fit,t){
   // Outside this particular hypothesis's active interval it is fully restored.
@@ -133,12 +146,13 @@ export function analyzeOptimization(input,capacity,options={}){
   const j=Math.max(0,Math.min(qs.length-2,Math.floor((t-qs[0])/Q))),w=(t-qs[j])/Q;
   return fs[j]*(1-w)+fs[j+1]*w;
  }
- const byEvent=new Map(events.map((e,i)=>[e.id,groups[i]]));
+ const byEvent=new Map(events.map((e,i)=>[e.id,groups[i]])),eventRows=new Map(events.map(e=>[e.id,[]]));
  let cursor=0;
  for(let i=0;i<rows.length;i++){
   const z=rows[i],t=times[i];while(cursor<events.length&&t>=parseTime(events[cursor].end))cursor++;
   const e=events[cursor];if(!e||t<parseTime(e.start))continue;
   const group=byEvent.get(e.id);z.optimizationEvent=e.id;z.optimizationStatus=e.status;z.optimizationScenarios=e.scenarios.join('/');
+  eventRows.get(e.id).push(z);
   z.optimizationBands=[];
   const top=Math.min(z.a,z.f),bottom=Math.max(z.g,z.p),original=positive(z.dispatch??0);
   if(e.status==='matched'){
@@ -157,6 +171,26 @@ export function analyzeOptimization(input,capacity,options={}){
    if(e.status==='unresolved')z.optimizationBands.push({kind:'optimizationPending',bottom,top});
   }
   e.originalDispatch+=original;e.optimization+=z.optimization;e.optimizationUpper+=z.optimizationUpper;
+ }
+ // Whole-event decision: zooming, filtering and unit changes must never alter
+ // attribution. Equivalent scene 5/6 trigger thresholds share one trajectory;
+ // competing beta/alpha/gamma or timing hypotheses cannot promote a residual.
+ for(const e of events){
+  const zs=eventRows.get(e.id),residual=zs.reduce((v,z)=>v+z.dispatchRemaining,0);
+  e.modelOptimization=e.optimization;e.residualBeforeMerge=residual;
+  e.residualRatioBeforeMerge=e.originalDispatch>0?residual/e.originalDispatch:0;
+  e.maxResidualMW=zs.reduce((v,z)=>Math.max(v,z.dispatchRemaining*60),0);
+  const trajectories=new Set(e.models.map(m=>JSON.stringify([m.firstTarget,m.end,m.alpha,m.beta,m.gamma,m.reduction])));
+  const modelCoversEvent=e.models.length>0&&e.models.every(m=>parseTime(m.firstTarget)-Q===parseTime(e.start)&&m.end===e.end);
+  e.toleranceMerged=e.status==='matched'&&trajectories.size===1&&modelCoversEvent&&e.optimization>0&&residual>1e-12&&
+   e.residualRatioBeforeMerge<=OPTIMIZATION_RESIDUAL_LIMITS.energyRatio+1e-12&&e.maxResidualMW<=capacity*OPTIMIZATION_RESIDUAL_LIMITS.powerRatio+1e-12;
+  for(const z of zs){
+   z.optimizationModel=z.optimization;z.optimizationModelUpper=z.optimizationUpper;
+   if(!e.toleranceMerged)continue;
+   z.optimizationToleranceAllocation=z.dispatchRemaining;z.optimization=z.dispatch??0;z.optimizationUpper=z.optimization;z.dispatchRemaining=0;
+   z.optimizationBands=z.optimization>0?[{kind:'optimization',bottom:Math.max(z.g,z.p),top:Math.min(z.a,z.f)}]:[];
+  }
+  if(e.toleranceMerged){e.toleranceAllocation=residual;e.optimization=e.originalDispatch;e.optimizationUpper=e.originalDispatch;}
  }
  return {rows,events,summary:summarize(rows,events),config,diagnostics:{frozenMinutes:frozen.size,frozenIntervals:intervals,
   screenedMinutes:rows.reduce((n,r,i)=>n+Number(!usable(r,times[i])),0)}};

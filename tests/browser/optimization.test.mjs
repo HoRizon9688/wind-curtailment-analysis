@@ -110,3 +110,44 @@ test('ambiguous recovery lengths retain every compatible model before taking the
  const z=r.rows[180];assert.ok(z.optimizationUpper>0);assert.equal(z.optimization,0,'a compatible gamma=1 model has already fully recovered');
  assert.equal(z.dispatchRemaining,z.dispatch);
 });
+
+function recalculate(rows){const allocator=new ThresholdAllocator(100);for(const z of rows)Object.assign(z,allocator.calculate(z.a,z.f,z.g,z.p));return rows;}
+test('a small residual of one compatible physical scenario is explicitly merged over the full event',()=>{
+ const rows=sample();rows[140].g-=.1;rows[140].p=rows[140].g-.1;recalculate(rows);const before=JSON.stringify(rows);
+ const r=subject.analyzeOptimization(rows,100,opts),e=r.events.find(e=>e.status==='matched');
+ assert.ok(e.toleranceMerged);assert.ok(e.toleranceAllocation>0);
+ assert.ok(e.residualRatioBeforeMerge<=.05);assert.ok(e.maxResidualMW<=.5);
+ assert.equal(e.optimization,e.originalDispatch);assert.equal(r.summary.dispatchRemaining,0);
+ assert.ok(r.rows[140].optimizationToleranceAllocation>0);
+ assert.equal(JSON.stringify(rows),before);
+ for(const z of r.rows){assert.ok(Math.abs(z.optimization+z.dispatchRemaining-(z.dispatch??0))<1e-10);assert.equal(z.optimization,z.optimizationModel+z.optimizationToleranceAllocation);}
+});
+test('a short independent dispatch dip blocks residual merging despite a small event energy share',()=>{
+ const rows=sample();rows[140].g-=2;rows[140].p=rows[140].g-.1;recalculate(rows);
+ const r=subject.analyzeOptimization(rows,100,opts),e=r.events.find(e=>e.status==='matched');
+ assert.ok(e.residualRatioBeforeMerge<.05);assert.ok(e.maxResidualMW>.5);
+ assert.equal(e.toleranceMerged,false);assert.ok(r.summary.dispatchRemaining>0);assert.equal(r.summary.optimizationToleranceAllocation,0);
+});
+test('a sustained residual exceeding five percent is not merged even when each minute is small',()=>{
+ const rows=sample();for(let m=106;m<195;m++)if(m%15){rows[m].g-=.49;rows[m].p=rows[m].g-.1;}recalculate(rows);
+ const r=subject.analyzeOptimization(rows,100,opts),e=r.events.find(e=>e.status==='matched');
+ assert.ok(e.residualRatioBeforeMerge>.05);assert.ok(e.maxResidualMW<=.5);
+ assert.equal(e.toleranceMerged,false);assert.ok(r.summary.dispatchRemaining>0);
+});
+test('unresolved events retain numeric trigger, recovery and coefficient diagnostics without merging',()=>{
+ const rows=sample({events:[{start:120,alpha:4,beta:1.7,e:.2,gamma:2}]}),r=subject.analyzeOptimization(rows,100,opts),e=r.events.find(e=>e.status==='unresolved');
+ assert.ok(e);assert.equal(e.toleranceMerged,false);assert.equal(e.triggerCycles.length,2);
+ assert.ok(e.modelChecks.some(c=>c.id===5&&Math.abs(c.reduction-.3)<1e-9&&c.maxError>.02));
+ assert.ok(e.recoveryBest);assert.ok(e.recoveryBest.maxGapMW<=1);
+ assert.equal(r.summary.optimizationToleranceAllocation,0);
+});
+test('competing physical models keep the conservative lower bound and do not merge residuals',()=>{
+ const r=subject.analyzeOptimization(sample({events:[{start:120,alpha:3,beta:1.1,e:.11,gamma:2}]}),100,opts),e=r.events.find(e=>e.status==='matched');
+ assert.equal(e.toleranceMerged,false);assert.ok(r.summary.optimizationUpper>r.summary.optimization);
+});
+test('a scene seven shape below fifteen percent reports trigger failure, not a false amplitude failure',()=>{
+ const r=subject.analyzeOptimization(sample({events:[{start:120,alpha:5,beta:1.5,e:.12,gamma:2}]}),100,opts),e=r.events.find(e=>e.status==='unresolved');
+ assert.ok(e.modelChecks.some(c=>c.id===7&&c.maxError<1e-9));
+ assert.ok(e.reasons.some(s=>s.includes('15%')));
+ assert.ok(!e.reasons.some(s=>s.includes('幅度')));
+});
